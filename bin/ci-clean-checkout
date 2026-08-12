@@ -1,0 +1,107 @@
+#!/usr/bin/env bash
+# Run the suite from a fresh detached checkout outside this repository, without agents.
+set -euo pipefail
+
+source_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
+work="$(mktemp -d)"
+trap 'rm -rf "$work"' EXIT
+clone="$work/clone"
+shims="$work/shims"
+shim_log="$work/agent-shims.log"
+exclusions="$clone/tests/no-agent-ci-exclusions.txt"
+mkdir -p "$shims" "$work/home"
+
+# --no-local prevents a local clone from sharing objects or working-tree state.
+git clone --quiet --no-local "$source_root" "$clone"
+git -C "$clone" checkout --quiet --detach HEAD
+
+# Test processes must not inherit caller-selected factory configuration.
+while IFS='=' read -r name _; do
+  [[ "$name" == FACTORY_* ]] && unset "$name"
+done < <(env)
+
+for agent in pi herdr claude; do
+  cat >"$shims/$agent" <<'SHIM'
+#!/usr/bin/env bash
+printf '%s\n' "$(basename "$0") $*" >>"${FACTORY_AGENT_SHIM_LOG:?}"
+printf 'FORBIDDEN: agent shim %s was invoked\n' "$(basename "$0")" >&2
+exit 97
+SHIM
+  chmod +x "$shims/$agent"
+done
+
+excluded=()
+while IFS= read -r entry; do
+  [[ -z "$entry" || "$entry" == \#* ]] && continue
+  excluded+=("$entry")
+done < "$exclusions"
+expected_exclusions=(
+  'tests/test-pi-project-rpc.py'
+  'tests/test-crew.py::test_default_adapters_and_missing_fixture_name_the_adapter_defect'
+)
+if [[ "${excluded[*]}" != "${expected_exclusions[*]}" ]]; then
+  printf 'invalid no-agent CI exclusion list; it must name exactly:\n' >&2
+  printf '  %s\n' "${expected_exclusions[@]}" >&2
+  exit 1
+fi
+for entry in "${excluded[@]}"; do
+  test_path="${entry%%::*}"
+  [[ -f "$clone/$test_path" ]] || { printf 'excluded test does not exist: %s\n' "$entry" >&2; exit 1; }
+done
+
+# Use the host toolchain only for ordinary tools (bash, python, rg, git). The
+# three agent names are shadowed by fail-loud shims. No FACTORY_* value enters.
+export PATH="$shims:$PATH"
+export HOME="$work/home"
+export TELEMETRY_LOG_DIR="$work/telemetry"
+export FACTORY_AGENT_SHIM_LOG="$shim_log"
+export FACTORY_CI_INNER=1
+
+is_excluded() {
+  local candidate="$1" item
+  for item in "${excluded[@]}"; do [[ "$candidate" == "$item" ]] && return 0; done
+  return 1
+}
+ran=0
+run_test() {
+  local rel="$1"
+  # Keep the process outside the checkout; paths into the detached clone are absolute.
+  (cd "$work" && case "$rel" in
+    # This test verifies telemetry's default sink inside its own disposable
+    # clone. It must not inherit CI's source-repository sink override.
+    tests/test-telemetry-sink.sh) env -u TELEMETRY_LOG_DIR bash "$clone/$rel" ;;
+    *.sh) bash "$clone/$rel" ;;
+    *.py) python3 "$clone/$rel" ;;
+  esac)
+  ran=$((ran + 1))
+}
+
+for test in "$clone"/tests/test-*.sh; do
+  rel="tests/${test##*/}"
+  run_test "$rel"
+done
+for test in "$clone"/tests/test-*.py; do
+  rel="tests/${test##*/}"
+  if [[ "$rel" == tests/test-crew.py ]]; then
+    # Its runner supports one named case. Run all cases individually so the
+    # one documented live-adapter case is skipped without hiding its siblings.
+    while IFS= read -r case; do
+      candidate="$rel::$case"
+      if is_excluded "$candidate"; then continue; fi
+      (cd "$work" && GIT_DIR="$clone/.git" GIT_WORK_TREE="$clone" python3 "$clone/$rel" "$case")
+      ran=$((ran + 1))
+    done < <(grep -E '^def test_[a-zA-Z0-9_]*\(' "$clone/$rel" | sed -E 's/^def (test_[a-zA-Z0-9_]*)\(.*/\1/')
+  elif is_excluded "$rel"; then
+    continue
+  else
+    run_test "$rel"
+  fi
+done
+
+if [[ -s "$shim_log" ]]; then
+  printf 'agent shim invocation(s):\n' >&2
+  cat "$shim_log" >&2
+  exit 1
+fi
+printf 'ci-clean-checkout: PASS (agent shims never invoked; ran %d, skipped %d requiring a real agent)\n' "$ran" "${#excluded[@]}"
+printf 'skipped: %s\n' "${excluded[@]}"

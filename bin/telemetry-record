@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+# Resolve git metadata from this script's repository, not the caller's cwd.
+# git-common-dir keeps linked worktrees on the shared main-checkout log.
+readonly script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+readonly project_root="$(cd -- "$script_dir" && cd -- "$(dirname -- "$(git rev-parse --git-common-dir)")" && pwd -P)"
+readonly log_dir="${TELEMETRY_LOG_DIR:-$project_root/var/telemetry}"
+readonly log_file="$log_dir/events.jsonl"
+readonly error_log="$log_dir/errors.log"
+
+record() {
+  local event="$1"
+  shift
+
+  mkdir -p "$log_dir"
+
+  local jq_args=(--arg event "$event")
+  local jq_filter='{ts: (now | todateiso8601), event: $event}'
+
+  local pair key value arg_name
+  for pair in "$@"; do
+    if [[ "$pair" != *=* ]]; then
+      printf 'bad key=value argument: %s\n' "$pair" >&2
+      return 1
+    fi
+    key="${pair%%=*}"
+    value="${pair#*=}"
+    arg_name="field_${key}"
+    jq_args+=(--arg "$arg_name" "$value")
+    jq_filter+=" + {\"${key}\": \$${arg_name}}"
+  done
+
+  jq -c -n "${jq_args[@]}" "$jq_filter" >> "$log_file"
+}
+
+if [[ $# -lt 1 ]]; then
+  printf 'usage: telemetry-record <event> [key=value ...]\n' >&2
+  exit 0
+fi
+
+mkdir -p "$log_dir" 2>/dev/null || true
+
+if ! record "$@" 2>>"$error_log"; then
+  printf '%s telemetry-record failed for event %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" >>"$error_log" 2>/dev/null || true
+fi
+
+exit 0

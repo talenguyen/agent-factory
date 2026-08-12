@@ -1,0 +1,9 @@
+.superpowers/
+.factory/
+.worktrees/
+.projects/
+var/telemetry/
+__pycache__/
+POLICY.local.md
+config/profiles.local.json
+.claude/settings.local.json

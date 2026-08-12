@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+readonly project_root="$(cd -- "$script_dir/.." && pwd -P)"
+
+for argument in "$@"; do
+  case "$argument" in
+    --skill|--skill=*)
+      printf '%s\n' \
+        'pi-project: caller-supplied --skill paths are not allowed' >&2
+      exit 64
+      ;;
+    --extension|--extension=*|-e|-e=*)
+      printf '%s\n' \
+        'pi-project: caller-supplied extension paths are not allowed' >&2
+      exit 64
+      ;;
+  esac
+done
+
+if ! pi_bin="$(command -v pi)"; then
+  printf '%s\n' 'pi-project: pi executable not found on PATH' >&2
+  exit 127
+fi
+readonly pi_bin
+
+skill_arguments=(--no-skills --no-extensions)
+for relative_path in .pi/skills .agents/skills .claude/skills; do
+  skill_path="$project_root/$relative_path"
+  if [[ -d "$skill_path" ]]; then
+    skill_arguments+=(--skill "$skill_path")
+  fi
+done
+
+exec "$pi_bin" "${skill_arguments[@]}" "$@"

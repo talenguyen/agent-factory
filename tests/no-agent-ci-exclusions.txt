@@ -1,0 +1,4 @@
+# Tests that require a real agent executable and therefore cannot run behind
+# the failing pi/herdr/claude shims. The CI harness asserts this exact list.
+tests/test-pi-project-rpc.py
+tests/test-crew.py::test_default_adapters_and_missing_fixture_name_the_adapter_defect

@@ -1,0 +1,99 @@
+#!/usr/bin/env python3
+"""Mechanical verifier for a research domain workspace."""
+import argparse
+import hashlib
+import json
+import re
+import sys
+from pathlib import Path
+
+CITATION = re.compile(r"\[@([A-Za-z0-9._-]+)(?::[0-9.]+)?\]")
+NUMBER = re.compile(r"(?<![A-Za-z0-9_])[0-9]+(?:\.[0-9]+)?(?![A-Za-z0-9_])")
+
+
+def fail(key, message):
+    print(f"{key}: {message}", file=sys.stderr)
+    return 1
+
+
+def has_figure(snapshot, figure):
+    return bool(re.search(rf"(?<![0-9]){re.escape(figure)}(?![0-9])", snapshot))
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--workspace", required=True, type=Path)
+    root = parser.parse_args().workspace
+    report, ledger, snapshots = root / "report.md", root / "sources.jsonl", root / "snapshots"
+    if not report.is_file() or not ledger.is_file() or not snapshots.is_dir():
+        return fail("workspace", "requires report.md, sources.jsonl, and snapshots/")
+    text = report.read_text()
+    cited = set(CITATION.findall(text))
+    records = {}
+    for line in ledger.read_text().splitlines():
+        if not line.strip(): continue
+        try: record = json.loads(line)
+        except json.JSONDecodeError as exc: return fail("sources.jsonl", f"invalid JSON: {exc.msg}")
+        key = record.get("key")
+        if not key: return fail("sources.jsonl", "record missing key")
+        if key in records: return fail(key, "duplicate key")
+        records[key] = record
+    for key in cited:
+        if key not in records: return fail(key, "citation does not resolve")
+    bodies = {}
+    for key, record in records.items():
+        for field in ("url", "retrieved_at", "excerpt", "sha256"):
+            if not record.get(field): return fail(key, f"missing {field}")
+        if not any(character.isalnum() for character in record["excerpt"]):
+            return fail(key, "excerpt has no alphanumeric substance")
+        snapshot = snapshots / f"{key}.html"
+        if not snapshot.is_file(): return fail(key, "missing snapshot")
+        body = snapshot.read_bytes()
+        if hashlib.sha256(body).hexdigest() != record["sha256"]: return fail(key, "snapshot sha256 mismatch")
+        bodies[key] = body.decode("utf-8", errors="replace")
+        if not record.get("render_required") and record["excerpt"] not in bodies[key]: return fail(key, "excerpt absent from snapshot")
+        if key not in cited: return fail(key, "orphaned source record")
+    for snapshot in snapshots.glob("*.html"):
+        if snapshot.stem not in records: return fail(snapshot.stem, "unreachable snapshot")
+
+    # Only this explicit line grammar creates a derived claim.
+    for raw_line in text.splitlines():
+        line = raw_line.lstrip(" \t-")
+        if not line.startswith("Derived:"): continue
+        match = re.fullmatch(r"Derived:\s*(.+?)\s*=\s*([0-9.]+)", line)
+        if not match: return fail("derived", "invalid derived claim format")
+        expression, claimed = match.groups()
+        operands = re.findall(r"\[@([A-Za-z0-9._-]+):([0-9.]+)\]", expression)
+        residual = re.sub(r"\[@[A-Za-z0-9._-]+:[0-9.]+\]", "", expression)
+        if not operands or residual.strip(" +-* /()"):
+            return fail(operands[0][0] if operands else "derived", "every derived operand needs a cited figure")
+        arithmetic = expression
+        for key, figure in operands:
+            if key not in records: return fail(key, "derived claim citation does not resolve")
+            if not has_figure(bodies[key], figure): return fail(key, "cited figure absent from snapshot")
+            arithmetic = arithmetic.replace(f"[@{key}:{figure}]", figure, 1)
+        try: actual = eval(arithmetic, {"__builtins__": {}}, {})
+        except Exception: return fail(operands[0][0], "invalid derived arithmetic")
+        if float(actual) != float(claimed): return fail(operands[0][0], "derived number does not recompute")
+
+    # In cited prose, bare unsourced numbers must be quoted figures, not hidden derivations.
+    for paragraph_match in re.finditer(r"(?:^|\n\s*\n)(.*?)(?=\n\s*\n|\Z)", text, re.S):
+        paragraph = paragraph_match.group(1)
+        paragraph_line = text.count("\n", 0, paragraph_match.start(1)) + 1
+        keys = CITATION.findall(paragraph)
+        if not keys: continue
+        prose = "\n".join(line for line in paragraph.splitlines() if not line.lstrip(" \t-").startswith("Derived:"))
+        prose = re.sub(r"(?m)^\s*\[\^[0-9]+\]:.*$", "", prose)
+        prose = re.sub(r"\[@[A-Za-z0-9._-]+(?::[0-9.]+)?\]", "", prose)
+        prose = re.sub(r"\[\^[0-9]+\]", "", prose)
+        prose = re.sub(r"(?m)^\s*[0-9]+[.)]\s+", "", prose)
+        for number in NUMBER.findall(prose):
+            if not any(has_figure(bodies[key], number) for key in keys):
+                line_number = next(
+                    (paragraph_line + index for index, source_line in enumerate(paragraph.splitlines()) if number in source_line),
+                    paragraph_line,
+                )
+                return fail(number, "paragraph number must either be a figure quoted from a cited snapshot or be restated as a 'Derived:' line " + f"(line {line_number}, cited by {', '.join(dict.fromkeys(keys))})")
+    return 0
+
+if __name__ == "__main__": sys.exit(main())

@@ -1,0 +1,14 @@
+#!/usr/bin/env python3
+"""Regenerate the reviewed §6c canonical fixture from its source skill."""
+
+from pathlib import Path
+
+root = Path(__file__).resolve().parent.parent
+skill = (root / ".claude/skills/delegate-to-pi/SKILL.md").read_text()
+header = "### 6c. Counter-mutation gate (every tier)"
+start = skill.index(header) + len(header)
+end = skill.index("\n## 7. Fallback on rate-limit or usage failure", start)
+fixture_prefix = "<!-- Canonical human-approved §6c wording. Regenerate intentionally with\n`bin/regenerate-delegate-to-pi-6c-fixture`; the resulting fixture diff makes\nthe wording change visible for review and is not an automatic approval. -->"
+(root / "tests/fixtures/delegate-to-pi/6c-canonical.md").write_text(
+    fixture_prefix + skill[start:end]
+)

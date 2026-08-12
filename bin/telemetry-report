@@ -1,0 +1,93 @@
+#!/usr/bin/env python3
+"""CLI for summarizing software-factory telemetry: text report or static HTML dashboard."""
+import argparse
+import subprocess
+import sys
+import webbrowser
+from pathlib import Path
+
+# Where this copy of the code lives. Used only to import the telemetry package
+# that ships alongside this script — each git worktree runs its own checkout's
+# code, which is what we want.
+CHECKOUT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(CHECKOUT_ROOT / "lib"))
+
+from telemetry.aggregate import DEFAULT_SESSIONS_ROOT, build_report
+from telemetry.dashboard import render_html
+from telemetry.text_report import render_text
+
+
+def shared_data_root() -> Path:
+    """Resolve the main checkout root, which every linked worktree shares.
+
+    Telemetry *data* is not per-checkout: bin/telemetry-record,
+    bin/telemetry-lookup-pi-session, and .claude/hooks/telemetry-log.sh all
+    anchor their log to this same location, so a report run from inside a
+    worktree must read the one shared log rather than an empty local copy.
+
+    `git rev-parse --git-common-dir` names the shared .git directory from any
+    worktree, but may return a path relative to the directory git ran in, so
+    resolve it against that directory before taking its parent.
+    """
+    common_dir = subprocess.run(
+        ["git", "rev-parse", "--git-common-dir"],
+        cwd=CHECKOUT_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    return (CHECKOUT_ROOT / common_dir).resolve().parent
+
+
+def main() -> int:
+    telemetry_dir = shared_data_root() / "var" / "telemetry"
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--events-file",
+        type=Path,
+        default=telemetry_dir / "events.jsonl",
+        help="Path to the telemetry event log (default: var/telemetry/events.jsonl)",
+    )
+    parser.add_argument(
+        "--sessions-root",
+        type=Path,
+        default=DEFAULT_SESSIONS_ROOT,
+        help="Root directory of pi's own session transcripts",
+    )
+    parser.add_argument(
+        "--html",
+        action="store_true",
+        help="Render a static HTML dashboard instead of printing a text summary",
+    )
+    parser.add_argument(
+        "--out",
+        type=Path,
+        default=telemetry_dir / "dashboard.html",
+        help="Where to write the HTML dashboard (only used with --html)",
+    )
+    parser.add_argument(
+        "--no-open",
+        action="store_true",
+        help="Don't open the dashboard in a browser after writing it",
+    )
+    args = parser.parse_args()
+
+    report = build_report(args.events_file, args.sessions_root)
+
+    if not args.html:
+        print(render_text(report), end="")
+        return 0
+
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    args.out.write_text(render_html(report), encoding="utf-8")
+    print(f"Dashboard written to {args.out}")
+
+    if not args.no_open:
+        webbrowser.open(args.out.as_uri())
+
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

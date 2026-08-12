@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      { "matcher": "*", "hooks": [{ "type": "command", "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/telemetry-log.sh" }] }
+    ],
+    "UserPromptSubmit": [
+      { "hooks": [{ "type": "command", "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/telemetry-log.sh" }] }
+    ],
+    "SessionStart": [
+      { "hooks": [{ "type": "command", "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/telemetry-log.sh" }] }
+    ],
+    "SessionEnd": [
+      { "hooks": [{ "type": "command", "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/telemetry-log.sh" }] }
+    ]
+  }
+}

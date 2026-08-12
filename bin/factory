@@ -1,0 +1,184 @@
+#!/usr/bin/env python3
+"""Thin operator-facing validation and scaffolding for bin/crew."""
+import argparse
+import os
+import pathlib
+import shutil
+import sys
+
+ROOT = pathlib.Path(os.environ.get("CREW_ROOT", pathlib.Path(__file__).resolve().parents[1])).resolve()
+sys.path.insert(0, str(ROOT / "lib"))
+from crew.core import (  # noqa: E402
+    POLICY_CATEGORIES,
+    CrewError,
+    capabilities,
+    domain_pack,
+    markdown_sections,
+    profile,
+)
+
+
+def selected(kind):
+    return os.environ.get(f"FACTORY_{kind.upper()}", "herdr" if kind == "mux" else "pi")
+
+
+def adapter_names(kind):
+    suffix = f"_{kind}.py"
+    return sorted(path.name[: -len(suffix)] for path in (ROOT / "lib" / "crew" / "adapters").glob(f"*{suffix}")
+                  if os.access(path, os.X_OK))
+
+
+def profile_source():
+    for path in (ROOT / "config" / "profiles.local.json", ROOT / "config" / "profiles.json",
+                 ROOT / ".claude" / "skills" / "delegate-to-pi" / "references" / "pi-profiles.json"):
+        if path.exists():
+            return path
+    return None
+
+
+def backend_executable(kind, name):
+    return {
+        "mux": {"herdr": "herdr"},
+        "worker": {"pi": "pi", "claude": "claude"},
+    }.get(kind, {}).get(name)
+
+
+def adapter_is_usable(kind, name):
+    executable = backend_executable(kind, name)
+    return executable is None or shutil.which(executable) is not None
+
+
+def require_usable_adapter(kind):
+    name = selected(kind)
+    if name not in adapter_names(kind):
+        raise CrewError(f"missing {kind} adapter: {name} ({ROOT / 'lib' / 'crew' / 'adapters' / f'{name}_{kind}'})")
+    executable = backend_executable(kind, name)
+    if executable and not adapter_is_usable(kind, name):
+        raise CrewError(f"{kind} adapter: {name} (present; backend unavailable: {executable})")
+    return capabilities(kind)
+
+
+def describe_capabilities(values):
+    meanings = {
+        "persistent_context": "context is re-supplied every turn",
+        "banner": "profiles cannot be verified",
+        "isolation": "results are not reproducible across machines",
+    }
+    for name, reason in meanings.items():
+        if values.get(name) is False:
+            print(f"  {name}: unavailable — {reason}")
+    for name, value in sorted(values.items()):
+        if name not in meanings:
+            print(f"  {name}: {'available' if value else 'unavailable'}")
+
+
+def doctor(_args):
+    broken = False
+    for kind in ("mux", "worker"):
+        name, known = selected(kind), adapter_names(kind)
+        print(f"discoverable {kind} adapters: {', '.join(known) or '(none)'}")
+        if name not in known:
+            expected = ROOT / "lib" / "crew" / "adapters" / f"{name}_{kind}"
+            print(f"{kind} adapter: {name} (missing) — missing {kind} adapter: {name} ({expected})")
+            broken = True
+            continue
+        executable = backend_executable(kind, name)
+        if executable and not adapter_is_usable(kind, name):
+            print(f"{kind} adapter: {name} (present; backend unavailable: {executable})")
+            broken = True
+            continue
+        try:
+            values = capabilities(kind)
+        except (CrewError, OSError) as exc:
+            print(f"{kind} adapter: {name} (missing) — {exc}")
+            broken = True
+        else:
+            print(f"{kind} adapter: {name} (available)")
+            describe_capabilities(values)
+            if kind == "mux" and name == "herdr":
+                if os.environ.get("HERDR_PANE_ID"):
+                    print("HERDR_PANE_ID: set (crew spawning safely anchored)")
+                else:
+                    print("HERDR_PANE_ID: unset (crew spawning is unsafe)")
+                    broken = True
+    source = profile_source()
+    try:
+        table = profile()
+    except CrewError as exc:
+        print(f"profile table: missing or invalid — {exc}")
+        broken = True
+    else:
+        print(f"profile table: resolved from {source} (default tier {table['default_tier']})")
+    try:
+        markdown_sections(ROOT / "POLICY.md", POLICY_CATEGORIES)
+    except CrewError as exc:
+        print(f"POLICY.md: missing or unparseable — {exc}")
+        broken = True
+    else:
+        print("POLICY.md: present and parseable")
+    return 1 if broken else 0
+
+
+def init(args):
+    domain_pack(args.domain)
+    target = pathlib.Path(args.directory).resolve()
+    target.mkdir(parents=True, exist_ok=True)
+    files = {
+        "WORKSPACE.md": f"# Workspace\n\ndomain: {args.domain}\n",
+        "acceptance.md": "# Acceptance criteria\n\n- [ ] mechanical: commands and exit codes are reproducible\n- [ ] sourced: claims cite their evidence\n- [ ] rubric: reviewer judgment is recorded\n\nrubric-only rule: rubric criteria never substitute for mechanical or sourced evidence.\n",
+        ".gitignore": "var/\n",
+    }
+    existing = [name for name in files if (target / name).exists()]
+    if existing:
+        raise CrewError(f"refusing to overwrite existing scaffold file(s): {', '.join(existing)}")
+    for name, content in files.items():
+        (target / name).write_text(content)
+    print(f"initialized {target} for domain {args.domain}")
+    return 0
+
+
+def workspace_domain(cwd):
+    workspace = cwd / "WORKSPACE.md"
+    if not workspace.exists():
+        raise CrewError(f"missing WORKSPACE.md in {cwd}")
+    for line in workspace.read_text().splitlines():
+        if line.startswith("domain:") and line[7:].strip():
+            return line[7:].strip()
+    raise CrewError(f"missing domain: declaration in {workspace}")
+
+
+def run(args):
+    domain = workspace_domain(pathlib.Path.cwd())
+    domain_pack(domain)
+    require_usable_adapter("mux")
+    require_usable_adapter("worker")
+    table = profile()
+    tier = args.tier or table["default_tier"]
+    if tier not in table["profiles"]:
+        raise CrewError(f"profile table has no {tier} tier")
+    print("Validated prerequisites. factory does not drive the loop; orchestrate and bin/crew do.")
+    print(f"Ready to paste: {ROOT / 'bin' / 'crew'} begin --domain {domain} --tier {tier}")
+    return 0
+
+
+def main():
+    parser = argparse.ArgumentParser(prog="factory")
+    commands = parser.add_subparsers(dest="command", required=True)
+    commands.add_parser("doctor").set_defaults(func=doctor)
+    init_parser = commands.add_parser("init")
+    init_parser.add_argument("directory")
+    init_parser.add_argument("--domain", required=True)
+    init_parser.set_defaults(func=init)
+    run_parser = commands.add_parser("run")
+    run_parser.add_argument("--tier", choices="SML")
+    run_parser.set_defaults(func=run)
+    args = parser.parse_args()
+    try:
+        return args.func(args)
+    except CrewError as exc:
+        print(f"factory: {exc}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,35 @@
+{
+  "default_tier": "M",
+  "profiles": {
+    "S": {
+      "provider": "your-provider",
+      "model": "your-small-model",
+      "thinking": "low",
+      "fallback": {
+        "provider": "your-fallback-provider",
+        "model": "your-small-fallback-model",
+        "thinking": "high"
+      }
+    },
+    "M": {
+      "provider": "your-provider",
+      "model": "your-medium-model",
+      "thinking": "medium",
+      "fallback": {
+        "provider": "your-fallback-provider",
+        "model": "your-medium-fallback-model",
+        "thinking": "high"
+      }
+    },
+    "L": {
+      "provider": "your-provider",
+      "model": "your-large-model",
+      "thinking": "high",
+      "fallback": {
+        "provider": "your-fallback-provider",
+        "model": "your-large-fallback-model",
+        "thinking": "high"
+      }
+    }
+  }
+}
