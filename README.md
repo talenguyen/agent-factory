@@ -87,6 +87,55 @@ the five-minute path — `claude` on your `PATH` and nothing else. `herdr` + `pi
 is the richer experience, where every crew member is a live pane you can watch
 and take over.
 
+## Configuring model profiles
+
+Each tier (`S`/`M`/`L`) maps to a provider, a model, a thinking level, and a
+fallback triple used when the primary hits an error or usage limit. `bin/crew`
+resolves the first profile table it finds, in order:
+
+1. `config/profiles.local.json` (gitignored — your personal overrides)
+2. `config/profiles.json` (committed — your project's defaults)
+3. `.claude/skills/delegate-to-pi/references/pi-profiles.json` (shipped default)
+
+Copy [`config/profiles.example.json`](config/profiles.example.json) to
+`config/profiles.json` (or `.local.json`) and fill in real providers and
+models. The shipped default wires the `openai-codex` provider as primary,
+with `opencode-go` as fallback:
+
+```json
+{
+  "default_tier": "M",
+  "profiles": {
+    "S": {
+      "provider": "openai-codex",
+      "model": "gpt-5.6-luna",
+      "thinking": "low",
+      "fallback": { "provider": "opencode-go", "model": "deepseek-v4-flash", "thinking": "high" }
+    },
+    "M": {
+      "provider": "openai-codex",
+      "model": "gpt-5.6-terra",
+      "thinking": "medium",
+      "fallback": { "provider": "opencode-go", "model": "deepseek-v4-flash", "thinking": "high" }
+    },
+    "L": {
+      "provider": "openai-codex",
+      "model": "gpt-5.6-sol",
+      "thinking": "high",
+      "fallback": { "provider": "opencode-go", "model": "deepseek-v4-pro", "thinking": "high" }
+    }
+  }
+}
+```
+
+`openai-codex` handles the primary attempt for every tier, sized to the
+goal (`gpt-5.6-luna` for `S`, `-terra` for `M`, `-sol` for `L`). When that
+provider errors or its usage limit is reached, `bin/crew fallback` switches
+the worker to `opencode-go`, running the cheaper `deepseek-v4-flash` for
+`S`/`M` and the larger `deepseek-v4-pro` for `L`. `bin/crew doctor` reports
+which profile table resolved and whether the adapter can verify it landed
+(`profile_verified`).
+
 ## How it fits together
 
 ```
@@ -149,5 +198,4 @@ are unwritten.
 
 ## Licence
 
-MIT. Bundles the [`superpowers`](https://github.com/obra/superpowers) skill set
-(v6.2.0, MIT, unmodified) — see `.claude/skills/THIRD_PARTY_NOTICES.md`.
+MIT.
