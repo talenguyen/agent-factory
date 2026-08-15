@@ -20,13 +20,13 @@ Runs an approved goal through exactly three human checkpoints — plan approval,
 Ask one clarifying question only when plausible interpretations materially change the deliverable; otherwise proceed.
 
 ## Step 1: Plan and acceptance spec
-Use `writing-plans`. Write the plan and `acceptance.md` yourself, never delegate either. Each deliverable has one or more criteria labelled `mechanical`, `sourced`, or `rubric`. A deliverable whose criteria are all **rubric-only** stops at Checkpoint 1: ask the user to add a specific human checkpoint or cut it from scope. Do not begin an unsupervised stretch otherwise.
+Write the plan and `acceptance.md` yourself, never delegate either. Each deliverable has one or more criteria labelled `mechanical`, `sourced`, or `rubric`. A deliverable whose criteria are all **rubric-only** stops at Checkpoint 1: ask the user to add a specific human checkpoint or cut it from scope. Do not begin an unsupervised stretch otherwise.
 
 ## Step 2 — CHECKPOINT: Plan approval
 Present the plan and acceptance spec and wait for explicit approval. Silence or an unrelated “sounds good” is not approval.
 
 ## Step 3: Build (unsupervised)
-Resolve `DOMAIN` and read its fail-loud pack. Use the pack's workspace layout, required sub-skills, roles, tester analog, and Verify command. Use `using-git-worktrees` when required; use `orchestrate` for implementation. Claude Code plans, reviews, and delivers; it never implements directly. The tester plan is written by Claude Code and exercises the pack's real-world tester analog, not merely the diff. Iterate ordinary reversible failures without pausing.
+Resolve `DOMAIN` and read its fail-loud pack. Use the pack's workspace layout, required sub-skills, roles, tester analog, and Verify command. Work in an isolated git worktree when required; use `orchestrate` for implementation. Claude Code plans, reviews, and delivers; it never implements directly. The tester plan is written by Claude Code and exercises the pack's real-world tester analog, not merely the diff. Iterate ordinary reversible failures without pausing.
 
 ## Step 4 — CHECKPOINT: Risk gate
 Stop before every **POLICY.md** Never/Off-limits action and every selected-pack Risk gate action. State the exact action, target, and reason; wait for explicit approval. Relay a worker's blocked question verbatim; never resolve it for the worker.
@@ -38,13 +38,13 @@ Stop before every **POLICY.md** Never/Off-limits action and every selected-pack 
 - “The rest of the build was routine, so this probably is too.”
 
 ## Step 5: Verify
-Use `verification-before-completion`: run the pack Verify command and all applicable tests/build checks; read fresh output before treating the goal as complete.
+Run the pack Verify command and all applicable tests/build checks; read fresh output before treating the goal as complete.
 
 ## Step 6: Review
-Use `requesting-code-review`; apply findings through `receiving-code-review`, or surface genuine judgment calls to the user.
+Request a code review of the artifact; apply its findings, or surface genuine judgment calls to the user.
 
 ## Step 7 — CHECKPOINT: Final delivery
-Use `finishing-a-development-branch` before merge/PR or send/publish/submit/file, then present the final-delivery choice and wait. The crew produces artifacts only and never performs outward-facing actions.
+Before merge/PR or send/publish/submit/file, present the final-delivery choice and wait. The crew produces artifacts only and never performs outward-facing actions.
 
 ## Common mistakes
 | Mistake | Reality |

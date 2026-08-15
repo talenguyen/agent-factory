@@ -44,19 +44,19 @@ require_section_elements() {
 require_section_elements 'Step 0:' \
   'Ask one clarifying question' 'plausible interpretations materially change the deliverable' 'otherwise proceed'
 require_section_elements 'Step 1:' \
-  'Use `writing-plans`' 'Write the plan and `acceptance.md` yourself' 'never delegate either' 'mechanical' 'sourced' 'rubric' 'rubric-only' 'Checkpoint 1' 'specific human checkpoint' 'cut it from scope' 'Do not begin an unsupervised stretch otherwise'
+  'Write the plan and `acceptance.md` yourself' 'never delegate either' 'mechanical' 'sourced' 'rubric' 'rubric-only' 'Checkpoint 1' 'specific human checkpoint' 'cut it from scope' 'Do not begin an unsupervised stretch otherwise'
 require_section_elements 'Step 2' \
   'Present the plan and acceptance spec' 'wait for explicit approval' 'Silence' 'is not approval'
 require_section_elements 'Step 3:' \
-  'Resolve `DOMAIN`' 'fail-loud pack' 'workspace layout' 'required sub-skills' 'roles' 'tester analog' 'Verify command' 'using-git-worktrees' 'orchestrate' 'never implements directly' 'tester plan is written by Claude Code' 'real-world tester analog' 'not merely the diff' 'Iterate ordinary reversible failures without pausing'
+  'Resolve `DOMAIN`' 'fail-loud pack' 'workspace layout' 'required sub-skills' 'roles' 'tester analog' 'Verify command' 'isolated git worktree' 'orchestrate' 'never implements directly' 'tester plan is written by Claude Code' 'real-world tester analog' 'not merely the diff' 'Iterate ordinary reversible failures without pausing'
 require_section_elements 'Step 4' \
   'Never/Off-limits action' 'selected-pack Risk gate action' 'exact action, target, and reason' 'wait for explicit approval' 'blocked question verbatim' 'never resolve it for the worker' 'none authorize skipping this gate'
 require_section_elements 'Step 5:' \
-  'Use `verification-before-completion`' 'run the pack Verify command' 'all applicable tests/build checks' 'read fresh output' 'complete'
+  'run the pack Verify command' 'all applicable tests/build checks' 'read fresh output' 'complete'
 require_section_elements 'Step 6:' \
-  'Use `requesting-code-review`' 'receiving-code-review' 'surface genuine judgment calls to the user'
+  'Request a code review' 'apply its findings' 'surface genuine judgment calls to the user'
 require_section_elements 'Step 7' \
-  'Use `finishing-a-development-branch`' 'Before merge/PR or send/publish/submit/file' 'present the final-delivery choice' 'wait' 'crew produces artifacts only' 'never performs outward-facing actions'
+  'Before merge/PR or send/publish/submit/file' 'present the final-delivery choice' 'wait' 'crew produces artifacts only' 'never performs outward-facing actions'
 
 if [[ -z ${SKIP_MUTATION_CHECK:-} ]]; then
   for heading in 'Step 0: Clarify only if genuinely ambiguous' 'Step 1: Plan and acceptance spec' 'Step 2 — CHECKPOINT: Plan approval' 'Step 3: Build (unsupervised)' 'Step 4 — CHECKPOINT: Risk gate' 'Step 5: Verify' 'Step 6: Review' 'Step 7 — CHECKPOINT: Final delivery'; do
