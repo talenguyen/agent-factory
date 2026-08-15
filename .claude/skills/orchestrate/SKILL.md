@@ -100,7 +100,7 @@ bin/crew read --role reviewer --recent --lines 200
 bin/crew verify
 ```
 
-If tests, assertions, or guards changed, changed tests, assertions, or guards require a counter-mutation gate: choose a mutation for each assertion. Break the protected behavior in a scratch copy or detached worktree, record its non-zero mutation exit, restore it, and record the zero control exit. Report both mutation and control exit codes. Judge whether those pairs prove each assertion rather than merely matching text. A failed gate is a finding to relay, not a reason to declare success.
+If tests, assertions, or guards were added or changed, added or changed tests, assertions, or guards require a counter-mutation gate: choose a mutation for each assertion. Break the protected behavior in a scratch copy or detached worktree, record its non-zero mutation exit, restore it, and record the zero control exit. Report both mutation and control exit codes. Judge whether those pairs prove each assertion rather than merely matching text. A failed gate is a finding to relay, not a reason to declare success.
 
 Close short-lived scouts when their report has been judged:
 

@@ -39,7 +39,7 @@ require_section_elements 'Reviewer rubric' \
 require_section_elements 'Risk gate' \
   'destructive git or filesystem operations' '.env.keys' 'production databases' 'outward-facing action'
 require_section_elements 'Roles' \
-  'Worker implements software' 'reviewer reviews the diff' 'scout is read-only' 'real running application or interface' 'exact reproduction steps' 'test-driven development'
+  'Worker implements software' 'reviewer reviews the diff' 'scout is read-only' 'real running application or interface' 'exact reproduction steps' 'test-driven development' 'reproduction command' 'failing output captured before the change' 'counter-mutation gate on the added test'
 require_section_elements 'Definition of done' \
   'verification and tests are green' 'review is approved' 'user-approved merge or PR' 'Worktree isolation is required'
 

@@ -35,7 +35,7 @@ for invariant in \
   'exactly `CHANGES REQUESTED:`' \
   'retry once on a noncompliant verdict' \
   'observed artifact defect' \
-  'changed tests, assertions, or guards require a counter-mutation gate' \
+  'added or changed tests, assertions, or guards require a counter-mutation gate' \
   'mutation and control exit codes'; do
   rg -Fqi -- "$invariant" "$clean" || { echo "missing invariant: $invariant" >&2; exit 1; }
 done
@@ -64,7 +64,7 @@ if [[ -z ${SKIP_MUTATION_CHECK:-} ]]; then
     'ADVISORY HINT' 'never the gate'
     'For research, do not read the whole diff' 'pack verifier and inspect its output'
     'exactly `APPROVED`' 'exactly `CHANGES REQUESTED:`' 'retry once on a noncompliant verdict'
-    'observed artifact defect' 'changed tests, assertions, or guards require a counter-mutation gate'
+    'observed artifact defect' 'added or changed tests, assertions, or guards require a counter-mutation gate'
     'mutation and control exit codes'
     'HERDR_PANE_ID' 'fail loud' 'restore the operator'
   )
