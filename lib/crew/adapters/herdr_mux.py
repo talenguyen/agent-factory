@@ -36,6 +36,11 @@ def status(value):
     return {"idle": "settled", "done": "settled", "blocked": "blocked", "working": "working"}.get(value, "unknown")
 
 
+def profile_banner_matches(provider, model, thinking, text):
+    pattern = rf"(?:\({re.escape(provider)}\)\s+)?{re.escape(model)}\s+•\s+{re.escape(thinking)}"
+    return re.search(pattern, text) is not None
+
+
 def main():
     if len(sys.argv) < 2:
         raise SystemExit("herdr mux: missing verb")
@@ -98,7 +103,7 @@ def main():
         finally:
             call("pane", "zoom", identifier, "--off")
         if not text.strip(): raise SystemExit("herdr mux: profile banner failed to render")
-        if not re.search(rf"\({re.escape(provider)}\)\s+{re.escape(model)}\s+•\s+{re.escape(thinking)}", text):
+        if not profile_banner_matches(provider, model, thinking, text):
             raise SystemExit("herdr mux: profile banner did not match")
     else:
         raise SystemExit(f"herdr mux: missing verb {verb}")
