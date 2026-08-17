@@ -8,6 +8,7 @@ import sys
 
 ROOT = pathlib.Path(os.environ.get("CREW_ROOT", pathlib.Path(__file__).resolve().parents[1])).resolve()
 sys.path.insert(0, str(ROOT / "lib"))
+from workflow.runs import WorkflowError, append_event, create_run, validate_run  # noqa: E402
 from crew.core import (  # noqa: E402
     POLICY_CATEGORIES,
     CrewError,
@@ -126,7 +127,7 @@ def init(args):
     files = {
         "WORKSPACE.md": f"# Workspace\n\ndomain: {args.domain}\n",
         "acceptance.md": "# Acceptance criteria\n\n- [ ] mechanical: commands and exit codes are reproducible\n- [ ] sourced: claims cite their evidence\n- [ ] rubric: reviewer judgment is recorded\n\nrubric-only rule: rubric criteria never substitute for mechanical or sourced evidence.\n",
-        ".gitignore": "var/\n",
+        ".gitignore": "var/\n.factory/\n",
     }
     existing = [name for name in files if (target / name).exists()]
     if existing:
@@ -161,6 +162,26 @@ def run(args):
     return 0
 
 
+def workflow(args):
+    root = pathlib.Path.cwd() / ".factory" / "runs"
+    if args.workflow_command == "begin":
+        print(__import__("json").dumps(create_run(pathlib.Path.cwd(), args.entry_point, args.goal)))
+        return 0
+    if "/" in args.run or "\\" in args.run or args.run in (".", ".."):
+        raise WorkflowError("invalid run id")
+    run_dir = root / args.run
+    if args.workflow_command == "append":
+        try:
+            details = __import__("json").loads(args.details_json)
+        except __import__("json").JSONDecodeError as exc:
+            raise WorkflowError("details-json is not valid JSON") from exc
+        print(__import__("json").dumps(append_event(run_dir, args.stream, args.stage, args.event, details)))
+        return 0
+    validate_run(run_dir, args.terminal)
+    print("workflow: valid")
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser(prog="factory")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -172,10 +193,27 @@ def main():
     run_parser = commands.add_parser("run")
     run_parser.add_argument("--tier", choices="SML")
     run_parser.set_defaults(func=run)
+    workflow_parser = commands.add_parser("workflow")
+    workflow_sub = workflow_parser.add_subparsers(dest="workflow_command", required=True)
+    begin = workflow_sub.add_parser("begin")
+    begin.add_argument("--entry-point", choices=("autonomous-goal", "orchestrate"), required=True)
+    begin.add_argument("--goal", required=True)
+    begin.set_defaults(func=workflow)
+    append = workflow_sub.add_parser("append")
+    append.add_argument("--run", required=True)
+    append.add_argument("--stream", choices=("ledger", "policy"), required=True)
+    append.add_argument("--stage", required=True)
+    append.add_argument("--event", required=True)
+    append.add_argument("--details-json", required=True)
+    append.set_defaults(func=workflow)
+    validate = workflow_sub.add_parser("validate")
+    validate.add_argument("--run", required=True)
+    validate.add_argument("--terminal", action="store_true")
+    validate.set_defaults(func=workflow)
     args = parser.parse_args()
     try:
         return args.func(args)
-    except CrewError as exc:
+    except (CrewError, WorkflowError) as exc:
         print(f"factory: {exc}", file=sys.stderr)
         return 1
 
