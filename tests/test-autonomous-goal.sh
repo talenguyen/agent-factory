@@ -48,7 +48,7 @@ require_section_elements 'Step 1:' \
 require_section_elements 'Step 2' \
   'Present the plan and acceptance spec' 'wait for explicit approval' 'Silence' 'is not approval'
 require_section_elements 'Step 3:' \
-  'Resolve `DOMAIN`' 'fail-loud pack' 'workspace layout' 'required sub-skills' 'roles' 'tester analog' 'Verify command' 'isolated git worktree' 'orchestrate' 'never implements directly' 'tester plan is written by Claude Code' 'real-world tester analog' 'not merely the diff' 'Iterate ordinary reversible failures without pausing'
+  'Resolve `DOMAIN`' 'fail-loud pack' 'workspace layout' 'required sub-skills' 'roles' 'tester analog' 'Verify command' 'isolated git worktree' 'delegate-to-pi' 'orchestrate' 'bin/crew' 'never implements directly' 'tester plan is written by Claude Code' 'real-world tester analog' 'not merely the diff' 'Iterate ordinary reversible failures without pausing'
 require_section_elements 'Step 4' \
   'Never/Off-limits action' 'selected-pack Risk gate action' 'exact action, target, and reason' 'wait for explicit approval' 'blocked question verbatim' 'never resolve it for the worker' 'none authorize skipping this gate'
 require_section_elements 'Step 5:' \

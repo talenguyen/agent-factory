@@ -112,9 +112,9 @@ assert calls[read_index - 1] == ["pane", "zoom", "p-new", "--on"]
 assert calls[read_index + 1] == ["pane", "zoom", "p-new", "--off"]
 # Break caught: blocked settles polling but is busy and therefore must not be reusable.
 assert listed[0]["status"] == "settled" and listed[1]["status"] == "blocked"
-# Break caught: invoking bare pi bypasses the repository isolation launcher.
-assert argv[0].endswith("/bin/pi-project") and argv[1:] == ["--provider", "openai-codex", "--model", "gpt-5.6-terra", "--thinking", "low", "--session-id", "session-42"]
-assert "pi" not in argv[0].split("/")[-1] or argv[0].endswith("pi-project")
+# Break caught: invoking the normal launcher bypasses the worker role marker.
+assert argv[0].endswith("/bin/pi-worker") and argv[1:] == ["--provider", "openai-codex", "--model", "gpt-5.6-terra", "--thinking", "low", "--session-id", "session-42"]
+assert "pi" not in argv[0].split("/")[-1] or argv[0].endswith("pi-worker")
 assert re.search(pattern, "(openai-codex) gpt-5.6-terra • medium")
 assert not any(re.search(pattern, value) for value in ("", "$ ", "(other-provider) other-model • high"))
 assert caps == {"isolation": True, "session_resume": True}

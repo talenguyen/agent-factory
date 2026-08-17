@@ -2,16 +2,18 @@
 
 ## Rules
 
-- Claude Code never implements directly — this repo is the factory, not the
-  product, and the delegation loop is the thing being built. Always delegate
-  implementation to a Pi worker via `delegate-to-pi`, launched through
-  `./bin/pi-project` — never bare `pi`.
+- An interactive root Pi or Claude Code session is the orchestrator — this repo
+  is the factory, not the product. After plan approval, it delegates
+  implementation through `delegate-to-pi`/`orchestrate` and `bin/crew`; it
+  never implements directly.
+- A Pi process launched by crew with `FACTORY_CREW_ROLE=worker` is the worker:
+  it implements directly and never delegates onward.
 - Implementation means any change to code, tests, skills, hooks, or scripts,
   here or under `.projects/`. Answering questions, research, reviewing a diff,
   and writing documents under `docs/` are not implementation — do those directly.
-- This rule binds the orchestrating Claude Code session only. A delegated Pi
-  worker reading this file IS the delegate: it implements the work itself and
-  never delegates onward.
+- These orchestration rules bind an interactive root Pi or Claude Code session.
+  A delegated Pi worker marked `FACTORY_CREW_ROLE=worker` implements the work
+  itself and never delegates onward.
 - Every new project goes under `.projects/<name>/` as its own independent git
   repo. Never commit project code into this repo's history (`.projects/` is
   gitignored).

@@ -98,7 +98,7 @@ mutate_and_check profile_mismatch lib/crew/adapters/herdr_mux.py \
 mutate_and_check blocked_status lib/crew/adapters/herdr_mux.py \
   '"blocked": "blocked"' '"blocked": "settled"'
 mutate_and_check worker_launcher lib/crew/adapters/pi_worker.py \
-  'str(ROOT / "bin" / "pi-project")' '"pi"'
+  'str(ROOT / "bin" / "pi-worker")' '"pi"'
 mutate_and_check worker_thinking lib/crew/adapters/pi_worker.py \
   '"--thinking", thinking' '"--thinking", "medium"'
 mutate_and_check worker_banner_pattern lib/crew/adapters/pi_worker.py \

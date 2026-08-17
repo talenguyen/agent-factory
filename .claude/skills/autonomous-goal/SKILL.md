@@ -26,7 +26,7 @@ Write the plan and `acceptance.md` yourself, never delegate either. Each deliver
 Present the plan and acceptance spec and wait for explicit approval. Silence or an unrelated “sounds good” is not approval.
 
 ## Step 3: Build (unsupervised)
-Resolve `DOMAIN` and read its fail-loud pack. Use the pack's workspace layout, required sub-skills, roles, tester analog, and Verify command. Work in an isolated git worktree when required; use `orchestrate` for implementation. Claude Code plans, reviews, and delivers; it never implements directly. The tester plan is written by Claude Code and exercises the pack's real-world tester analog, not merely the diff. Iterate ordinary reversible failures without pausing.
+Resolve `DOMAIN` and read its fail-loud pack. Use the pack's workspace layout, required sub-skills, roles, tester analog, and Verify command. Work in an isolated git worktree when required; invoke `delegate-to-pi` for implementation, which uses `orchestrate` and `bin/crew`. Claude Code plans, reviews, and delivers; it never implements directly. The tester plan is written by Claude Code and exercises the pack's real-world tester analog, not merely the diff. Iterate ordinary reversible failures without pausing.
 
 ## Step 4 — CHECKPOINT: Risk gate
 Stop before every **POLICY.md** Never/Off-limits action and every selected-pack Risk gate action. State the exact action, target, and reason; wait for explicit approval. Relay a worker's blocked question verbatim; never resolve it for the worker.

@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+export FACTORY_CREW_ROLE=worker
+exec "$script_dir/pi-project" "$@"
