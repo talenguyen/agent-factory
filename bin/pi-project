@@ -28,7 +28,7 @@ readonly pi_bin
 skill_arguments=(--no-skills --no-extensions)
 for relative_path in .pi/skills .agents/skills .claude/skills; do
   skill_path="$project_root/$relative_path"
-  if [[ -d "$skill_path" ]]; then
+  if [[ -d "$skill_path" ]] && [[ "$relative_path" != .claude/skills || "${FACTORY_CREW_ROLE-}" != worker ]]; then
     skill_arguments+=(--skill "$skill_path")
   fi
 done
