@@ -192,6 +192,10 @@ def validate_run(run_dir: Path, terminal: bool = False) -> None:
     if ledger[-1]["event"] != correspondence[outcome["outcome"]]:
         raise WorkflowError(f"{outcome_path}: contradictory outcome and final respond event")
     if outcome["outcome"] == "goal_met" and not any(
-        entry["stage"] == "observe_and_verify" and entry["event"] == "completed" for entry in ledger
+        entry["stage"] == "observe_and_verify"
+        and entry["event"] == "completed"
+        and isinstance(entry["details"].get("evidence"), list)
+        and bool(entry["details"]["evidence"])
+        for entry in ledger
     ):
-        raise WorkflowError(f"{outcome_path}: goal_met requires completed observe_and_verify evidence")
+        raise WorkflowError(f"{outcome_path}: goal_met requires observe_and_verify evidence")

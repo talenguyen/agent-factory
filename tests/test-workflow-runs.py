@@ -22,7 +22,8 @@ def complete(run):
         (run / name).write_text("recorded facts\n")
     (run / "evidence" / "verify.log").write_text("exit 0\n")
     for stage in ("classify", "retrieve_context", "plan", "execute_loop", "observe_and_verify", "policy_gate"):
-        append_event(run, "ledger", stage, "completed", {})
+        details = {"evidence": ["evidence/verify.log"]} if stage == "observe_and_verify" else {}
+        append_event(run, "ledger", stage, "completed", details)
     append_event(run, "ledger", "respond", "completed", {"evidence": ["evidence/verify.log"]})
     (run / "outcome.json").write_text(json.dumps({"outcome": "goal_met", "evidence": ["evidence/verify.log"]}))
 
@@ -53,6 +54,12 @@ def main():
             validate_run(run, terminal=True)
         (run / "ledger.jsonl").write_text(valid_ledger)
         (run / "outcome.json").write_text(json.dumps({"outcome": "goal_met", "evidence": ["evidence/verify.log"]}))
+        lines = [json.loads(line) for line in valid_ledger.splitlines()]
+        for entry in lines:
+            if entry["stage"] == "observe_and_verify": entry["details"] = {}
+        (run / "ledger.jsonl").write_text("\n".join(json.dumps(entry) for entry in lines) + "\n")
+        raises(lambda: validate_run(run, terminal=True), "observe_and_verify evidence")
+        (run / "ledger.jsonl").write_text(valid_ledger)
         for name in ("plan.md", "context.md"):
             original = (run / name).read_text()
             (run / name).unlink(); raises(lambda: validate_run(run, terminal=True), name)
