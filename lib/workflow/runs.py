@@ -87,6 +87,9 @@ def _read_events(path: Path, validate_transitions: bool = False) -> list[dict]:
         if record["stage"] not in STAGES:
             raise WorkflowError(f"{path}:{number}: unknown stage {record['stage']}")
         _check_details(record["details"], path.parent)
+        for evidence in record["details"].get("evidence", []) or []:
+            if not (path.parent / evidence).is_file():
+                raise WorkflowError(f"{path}:{number}: missing evidence {evidence}")
         if validate_transitions and events and record["stage"] not in ALLOWED_NEXT[events[-1]["stage"]]:
             raise WorkflowError(f"{path}:{number}: invalid transition to {record['stage']}")
         events.append(record)
@@ -144,6 +147,11 @@ def validate_run(run_dir: Path, terminal: bool = False) -> None:
             raise WorkflowError(f"{path}: missing or empty")
         if any(token in path.read_text() for token in ("TBD", "TODO", "FIXME", "TBA")):
             raise WorkflowError(f"{path}: placeholder content")
+        if name == "classification.json":
+            try: classification = json.loads(path.read_text())
+            except json.JSONDecodeError as exc: raise WorkflowError(f"{path}: invalid JSON") from exc
+            if not isinstance(classification, dict) or not classification:
+                raise WorkflowError(f"{path}: invalid classification")
     evidence_dir = run_dir / "evidence"
     if not any(p.is_file() for p in evidence_dir.rglob("*")):
         raise WorkflowError(f"{evidence_dir}: no evidence files")
