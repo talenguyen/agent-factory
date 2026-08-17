@@ -16,6 +16,17 @@ Runs an approved goal through exactly three human checkpoints — plan approval,
 | 2 | Risk gate | Before irreversible, off-limits, or pack-risk action | No plan or pack overrides user authority |
 | 3 | Final delivery | Before merge/PR or send/publish/submit/file | Delivery is the user's decision |
 
+## Lifecycle record
+
+Read `.claude/skills/orchestrate/references/shared-lifecycle.md` before acting. At intake create a durable run:
+
+```bash
+RUN_JSON="$(bin/factory workflow begin --entry-point autonomous-goal --goal "$GOAL")"
+RUN_ID="$(printf '%s' "$RUN_JSON" | jq -r .run_id)"
+```
+
+Record intake, classification, retrieved context, plan approval, every worker dispatch, observation, captured evidence path, policy decision, and terminal response with `bin/factory workflow append`. Evidence incomplete goes to `retrieve_context`; a Diagnosed, repairable failure records the observed defect and correction before `execute_loop`; risky actions use `human_approval`, and denial or unavailable interactive UI is blocked. Apply the pre-delivery policy gate. Before reporting completion run `bin/factory workflow validate --run "$RUN_ID" --terminal`. Workers never manage records or perform policy-gated actions.
+
 ## Step 0: Clarify only if genuinely ambiguous
 Ask one clarifying question only when plausible interpretations materially change the deliverable; otherwise proceed.
 
