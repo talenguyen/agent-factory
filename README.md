@@ -73,6 +73,8 @@ delegation, or `/autonomous-goal <idea>` to go from idea to delivery with three
 human checkpoints — plan approval, risk gate, final delivery — and nothing else
 interrupting.
 
+Every `/autonomous-goal` and `/orchestrate` run records its intake, plan, evidence, policy decisions, and outcome at `.factory/runs/<run-id>/` in the target workspace. `bin/factory workflow validate --run <run-id> --terminal` fails if terminal evidence is incomplete or malformed; it validates records but never drives workers or authorizes actions.
+
 ## What you need
 
 | | |

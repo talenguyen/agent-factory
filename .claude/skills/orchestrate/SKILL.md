@@ -22,6 +22,10 @@ reversible clarification. For a risk match or uncertainty, hand control to the
 human: quote the question and state the action, target, and reason.
 Never resolve the risky step in the agent's place, work around it, or quietly finish it yourself.
 
+## Lifecycle record
+
+Read `references/shared-lifecycle.md`. For a raw goal, create a record with `bin/factory workflow begin --entry-point orchestrate --goal "$GOAL"`; for an approved existing run and plan, verify the approved-plan event before dispatch. Append concrete dispatch, crew state, observation, evidence, and policy events. Treat Evidence incomplete as `retrieve_context`, and only a Diagnosed, repairable failure with the observed defect and the required correction as a correction dispatch. Risky or outbound requests go to `human_approval`; denial or unavailable interactive UI is blocked. Capture final verification, review, tester, and mutation evidence, then run `bin/factory workflow validate --run "$RUN_ID" --terminal` before reporting. When no safe transition applies, end the crew delegation as escalated and request the exact human decision.
+
 ## Start with judgment
 
 1. Resolve the domain and read its pack. Classify the goal as S, M, or L using
