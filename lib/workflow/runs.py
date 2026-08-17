@@ -41,7 +41,10 @@ def _stream_path(run_dir: Path, stream: str) -> Path:
 
 def _resolved_evidence_path(run_dir: Path, value: str) -> Path:
     """Return a contained evidence path, including symlink resolution."""
-    root = (run_dir / "evidence").resolve()
+    evidence_dir = run_dir / "evidence"
+    if evidence_dir.is_symlink() or not evidence_dir.is_dir():
+        raise WorkflowError(f"{run_dir}: evidence directory must be a real directory")
+    root = evidence_dir.resolve()
     candidate = (run_dir / value).resolve()
     try:
         candidate.relative_to(root)
@@ -188,3 +191,7 @@ def validate_run(run_dir: Path, terminal: bool = False) -> None:
     }
     if ledger[-1]["event"] != correspondence[outcome["outcome"]]:
         raise WorkflowError(f"{outcome_path}: contradictory outcome and final respond event")
+    if outcome["outcome"] == "goal_met" and not any(
+        entry["stage"] == "observe_and_verify" and entry["event"] == "completed" for entry in ledger
+    ):
+        raise WorkflowError(f"{outcome_path}: goal_met requires completed observe_and_verify evidence")

@@ -3,6 +3,7 @@ import json
 import pathlib
 import tempfile
 import os
+import shutil
 import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "lib"))
 from workflow.runs import WorkflowError, append_event, create_run, validate_run
@@ -97,6 +98,23 @@ def main():
             lines = (run / "ledger.jsonl").read_text().splitlines(); lines[-1] = json.dumps(final)
             (run / "ledger.jsonl").write_text("\n".join(lines) + "\n")
             raises(lambda: validate_run(run), "outside")
+        link.unlink(missing_ok=True)
+        (run / "ledger.jsonl").write_text(valid_ledger)
+
+        # The evidence root itself cannot be a symlink.
+        outside_dir = workspace / "outside-evidence"; outside_dir.mkdir()
+        outside_file = outside_dir / "verify.log"; outside_file.write_text("secret")
+        evidence_root = run / "evidence"; real_evidence = run / "evidence-real"
+        evidence_root.rename(real_evidence); evidence_root.symlink_to(outside_dir, target_is_directory=True)
+        raises(lambda: validate_run(run, terminal=True), "evidence directory")
+        evidence_root.unlink(); real_evidence.rename(evidence_root)
+
+        # A goal_met record must include completed independent observation.
+        lines = [json.loads(line) for line in valid_ledger.splitlines()]
+        lines = [entry for entry in lines if entry["stage"] != "observe_and_verify"]
+        for sequence, entry in enumerate(lines, 1): entry["sequence"] = sequence
+        (run / "ledger.jsonl").write_text("\n".join(json.dumps(entry) for entry in lines) + "\n")
+        raises(lambda: validate_run(run, terminal=True), "observe_and_verify")
     print("test-workflow-runs: PASS")
 
 if __name__ == "__main__": main()
