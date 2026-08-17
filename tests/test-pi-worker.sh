@@ -22,7 +22,7 @@ env -u FACTORY_CREW_ROLE PATH="$temp_dir/fake-bin:$PATH" PI_ROLE_FILE="$actual_r
 [[ "$(<"$actual_role")" == worker ]] || { printf 'worker role was not exported\n' >&2; exit 1; }
 {
   printf '%s\n' '--no-skills' '--no-extensions'
-  for relative_path in .pi/skills .agents/skills .claude/skills; do
+  for relative_path in .pi/skills .agents/skills; do
     if [[ -d "$project_root/$relative_path" ]]; then
       printf '%s\n' '--skill' "$project_root/$relative_path"
     fi

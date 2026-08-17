@@ -29,6 +29,19 @@ PATH="$temp_dir/fake-bin:$PATH" PI_ARGS_FILE="$actual_args" \
 
 diff -u "$temp_dir/expected-args" "$actual_args"
 
+worker_args="$temp_dir/worker-args"
+env FACTORY_CREW_ROLE=worker PATH="$temp_dir/fake-bin:$PATH" PI_ARGS_FILE="$worker_args" \
+  "$launcher"
+if grep -F -- "$project_root/.claude/skills" "$worker_args"; then
+  printf 'test-pi-project: .claude/skills leaked into worker skill_arguments\n' >&2
+  exit 1
+fi
+for relative_path in .pi/skills .agents/skills; do
+  if [[ -d "$project_root/$relative_path" ]]; then
+    grep -F -- "$project_root/$relative_path" "$worker_args"
+  fi
+done
+
 assert_rejected_without_invoking_pi() {
   local expected_error="$1"
   shift
