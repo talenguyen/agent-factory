@@ -2,6 +2,7 @@
 import json
 import pathlib
 import tempfile
+import os
 import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "lib"))
 from workflow.runs import WorkflowError, append_event, create_run, validate_run
@@ -42,6 +43,15 @@ def main():
         validate_run(run)
         complete(run)
         validate_run(run, terminal=True)
+        valid_ledger = (run / "ledger.jsonl").read_text()
+        # Each terminal outcome has one exact final respond event.
+        for terminal_outcome, terminal_event in (("goal_met", "completed"), ("blocked", "blocked"), ("escalated", "escalated"), ("cancelled", "cancelled")):
+            lines = valid_ledger.splitlines(); final = json.loads(lines[-1]); final["event"] = terminal_event
+            lines[-1] = json.dumps(final); (run / "ledger.jsonl").write_text("\n".join(lines) + "\n")
+            (run / "outcome.json").write_text(json.dumps({"outcome": terminal_outcome, "evidence": ["evidence/verify.log"]}))
+            validate_run(run, terminal=True)
+        (run / "ledger.jsonl").write_text(valid_ledger)
+        (run / "outcome.json").write_text(json.dumps({"outcome": "goal_met", "evidence": ["evidence/verify.log"]}))
         for name in ("plan.md", "context.md"):
             original = (run / name).read_text()
             (run / name).unlink(); raises(lambda: validate_run(run, terminal=True), name)
@@ -51,6 +61,42 @@ def main():
         (run / "context.md").write_text("recorded")
         (run / "outcome.json").write_text('{')
         raises(lambda: validate_run(run, terminal=True), "outcome.json")
+
+        # Terminal status must agree with the final respond event.
+        (run / "outcome.json").write_text(json.dumps({"outcome": "goal_met", "evidence": ["evidence/verify.log"]}))
+        ledger = (run / "ledger.jsonl").read_text().splitlines()
+        final = json.loads(ledger[-1]); final["event"] = "blocked"
+        ledger[-1] = json.dumps(final); (run / "ledger.jsonl").write_text("\n".join(ledger) + "\n")
+        raises(lambda: validate_run(run, terminal=True), "contradictory")
+
+        # A skipped lifecycle stage and invalid run metadata are rejected.
+        ledger[-1] = json.dumps({**final, "event": "completed", "sequence": 2})
+        ledger = [ledger[0], ledger[-1]]
+        (run / "ledger.jsonl").write_text("\n".join(ledger) + "\n")
+        raises(lambda: validate_run(run, terminal=True), "transition")
+        (run / "ledger.jsonl").write_text("\n".join([json.dumps(json.loads(line)) for line in ledger]) + "\n")
+        metadata_path = run / "run.json"
+        metadata = json.loads(metadata_path.read_text()); metadata["run_id"] = "not-a-uuid"
+        metadata_path.write_text(json.dumps(metadata))
+        raises(lambda: validate_run(run), "run_id")
+
+        # Evidence references must not escape through symlinks.
+        metadata["run_id"] = run.name; metadata_path.write_text(json.dumps(metadata))
+        (run / "ledger.jsonl").write_text(valid_ledger)
+        # Restore the valid terminal outcome after the mutations above.
+        (run / "outcome.json").write_text(json.dumps({"outcome": "goal_met", "evidence": ["evidence/verify.log"]}))
+        outside = workspace / "outside.log"; outside.write_text("secret")
+        link = run / "evidence" / "linked.log"
+        try:
+            link.symlink_to(outside)
+        except (OSError, NotImplementedError):
+            pass
+        else:
+            final = json.loads((run / "ledger.jsonl").read_text().splitlines()[-1])
+            final["details"] = {"evidence": ["evidence/linked.log"]}
+            lines = (run / "ledger.jsonl").read_text().splitlines(); lines[-1] = json.dumps(final)
+            (run / "ledger.jsonl").write_text("\n".join(lines) + "\n")
+            raises(lambda: validate_run(run), "outside")
     print("test-workflow-runs: PASS")
 
 if __name__ == "__main__": main()

@@ -39,6 +39,17 @@ def _stream_path(run_dir: Path, stream: str) -> Path:
     return run_dir / f"{stream}.jsonl"
 
 
+def _resolved_evidence_path(run_dir: Path, value: str) -> Path:
+    """Return a contained evidence path, including symlink resolution."""
+    root = (run_dir / "evidence").resolve()
+    candidate = (run_dir / value).resolve()
+    try:
+        candidate.relative_to(root)
+    except ValueError as exc:
+        raise WorkflowError(f"{run_dir}: evidence target outside evidence: {value}") from exc
+    return candidate
+
+
 def _check_details(details: object, run_dir: Path) -> dict:
     if not isinstance(details, dict):
         raise WorkflowError(f"{run_dir}: event details must be an object")
@@ -49,6 +60,7 @@ def _check_details(details: object, run_dir: Path) -> dict:
         path = Path(value)
         if path.is_absolute() or ".." in path.parts or not (path.parts and (path.parts[0] == "evidence" or value.startswith("evidence/"))):
             raise WorkflowError(f"{run_dir}: invalid evidence path {value}")
+        _resolved_evidence_path(run_dir, value)
     return details
 
 
@@ -88,7 +100,8 @@ def _read_events(path: Path, validate_transitions: bool = False) -> list[dict]:
             raise WorkflowError(f"{path}:{number}: unknown stage {record['stage']}")
         _check_details(record["details"], path.parent)
         for evidence in record["details"].get("evidence", []) or []:
-            if not (path.parent / evidence).is_file():
+            evidence_path = _resolved_evidence_path(path.parent, evidence)
+            if not evidence_path.is_file():
                 raise WorkflowError(f"{path}:{number}: missing evidence {evidence}")
         if validate_transitions and events and record["stage"] not in ALLOWED_NEXT[events[-1]["stage"]]:
             raise WorkflowError(f"{path}:{number}: invalid transition to {record['stage']}")
@@ -116,7 +129,7 @@ def _check_evidence(run_dir: Path, values: object) -> None:
         raise WorkflowError(f"{run_dir / 'outcome.json'}: evidence must be non-empty")
     _check_details({"evidence": values}, run_dir)
     for value in values:
-        path = run_dir / value
+        path = _resolved_evidence_path(run_dir, value)
         if not path.is_file():
             raise WorkflowError(f"{run_dir}: missing evidence {value}")
 
@@ -129,7 +142,11 @@ def validate_run(run_dir: Path, terminal: bool = False) -> None:
     if metadata.get("schema_version") != SCHEMA_VERSION or metadata.get("entry_point") not in ("autonomous-goal", "orchestrate"):
         raise WorkflowError(f"{metadata_path}: unsupported schema or entry point")
     run_id = metadata.get("run_id", "")
-    if not re.fullmatch(r"[0-9a-fA-F-]{36}", str(run_id)):
+    try:
+        parsed_id = uuid.UUID(str(run_id))
+    except (ValueError, AttributeError) as exc:
+        raise WorkflowError(f"{metadata_path}: invalid run_id") from exc
+    if str(parsed_id) != str(run_id).lower() or run_dir.name != str(run_id):
         raise WorkflowError(f"{metadata_path}: invalid run_id")
     if metadata.get("workspace") != str(run_dir.parents[2].resolve()):
         raise WorkflowError(f"{metadata_path}: workspace does not match run location")
@@ -163,3 +180,11 @@ def validate_run(run_dir: Path, terminal: bool = False) -> None:
     _check_evidence(run_dir, outcome.get("evidence"))
     if not ledger or ledger[-1]["stage"] != "respond":
         raise WorkflowError(f"{run_dir / 'ledger.jsonl'}: terminal ledger must end at respond")
+    correspondence = {
+        "goal_met": "completed",
+        "blocked": "blocked",
+        "escalated": "escalated",
+        "cancelled": "cancelled",
+    }
+    if ledger[-1]["event"] != correspondence[outcome["outcome"]]:
+        raise WorkflowError(f"{outcome_path}: contradictory outcome and final respond event")
