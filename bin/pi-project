@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-readonly script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
-readonly project_root="$(cd -- "$script_dir/.." && pwd -P)"
+readonly project_root="$(pwd -P)"
 
 for argument in "$@"; do
   case "$argument" in

@@ -13,6 +13,8 @@ printf '%s\n' "$@" > "$PI_ARGS_FILE"
 STUB
 chmod +x "$temp_dir/fake-bin/pi"
 
+cd "$project_root"
+unset FACTORY_CREW_ROLE
 readonly actual_args="$temp_dir/actual-args"
 PATH="$temp_dir/fake-bin:$PATH" PI_ARGS_FILE="$actual_args" \
   "$launcher" --provider test-provider --model test-model --thinking low
@@ -39,6 +41,23 @@ fi
 for relative_path in .pi/skills .agents/skills; do
   if [[ -d "$project_root/$relative_path" ]]; then
     grep -F -- "$project_root/$relative_path" "$worker_args"
+  fi
+done
+
+other_project="$temp_dir/other-project"
+mkdir -p "$other_project/.pi/skills"
+other_project="$(cd -- "$other_project" && pwd -P)"
+other_args="$temp_dir/other-args"
+(
+  cd "$other_project"
+  PATH="$temp_dir/fake-bin:$PATH" PI_ARGS_FILE="$other_args" "$launcher"
+)
+grep -Fx -- '--skill' "$other_args"
+grep -Fx -- "$other_project/.pi/skills" "$other_args"
+for relative_path in .pi/skills .agents/skills .claude/skills; do
+  if grep -F -- "$project_root/$relative_path" "$other_args"; then
+    printf 'test-pi-project: agent-factory skills leaked into other project\n' >&2
+    exit 1
   fi
 done
 
