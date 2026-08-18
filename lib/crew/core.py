@@ -198,18 +198,24 @@ def verify_profile(identifier, selected_profile):
 
 def spawn(args):
     state = load(); require_running(state); name = args.role
-    prefix = f"crew-{name}-{state['tier']}"; cwd = str(pathlib.Path.cwd())
+    if args.tier is not None and args.tier not in "SML": raise CrewError(f"invalid tier {args.tier!r}; tier must be S, M, or L")
+    role_tier = args.tier or state["tier"]
+    role_profile = state["profile"] if args.tier is None else profile()["profiles"][role_tier]
+    prefix = f"crew-{name}-{role_tier}"; cwd = str(pathlib.Path.cwd())
     session_id = str(uuid.uuid4()) if name == "scout" else f"{state['delegation_id']}-{name}"
     agents = json.loads(invoke("mux", "crew_list"))
     if name in state["roles"] and name != "scout":
         saved = state["roles"][name]
-        live = next((agent for agent in agents if agent.get("id") == saved["id"] and agent.get("status") == "settled"), None)
-        if live:
-            profile_verified = "unverifiable" if not capabilities("mux")["banner"] else "verified"
-            if profile_verified == "unverifiable": print("crew: warning: cannot verify profile; adapter reports banner=false", file=sys.stderr)
-            event("pi_reuse", state, role=name)
-            output({"id": saved["id"], "reused": True, "profile": state["profile"], "profile_verified": profile_verified})
-            return
+        if saved.get("tier", state["tier"]) == role_tier:
+            live = next((agent for agent in agents if agent.get("id") == saved["id"] and agent.get("status") == "settled"), None)
+            if live:
+                saved.update({"tier": role_tier, "profile": role_profile})
+                save(state)
+                profile_verified = "unverifiable" if not capabilities("mux")["banner"] else "verified"
+                if profile_verified == "unverifiable": print("crew: warning: cannot verify profile; adapter reports banner=false", file=sys.stderr)
+                event("pi_reuse", state, role=name)
+                output({"id": saved["id"], "reused": True, "profile": role_profile, "profile_verified": profile_verified})
+                return
         del state["roles"][name]
     found = next((a for a in agents if isinstance(a.get("name"), str) and (a["name"] == prefix or a["name"].startswith(prefix + "-")) and a.get("cwd") == cwd and a.get("status") == "settled"), None)
     if found:
@@ -218,13 +224,13 @@ def spawn(args):
         if profile_verified == "unverifiable": print("crew: warning: cannot verify profile; adapter reports banner=false", file=sys.stderr)
         event("pi_reuse", state, role=name)
     else:
-        argv = json.loads(invoke("worker", "worker_argv", [state["profile"]["provider"], state["profile"]["model"], state["profile"]["thinking"], session_id, ""]))
+        argv = json.loads(invoke("worker", "worker_argv", [role_profile["provider"], role_profile["model"], role_profile["thinking"], session_id, ""]))
         spawn_args = [prefix, cwd, *( ["--stack-under", args.stack_under] if args.stack_under else [] ), "--", *argv]
         identifier = json.loads(invoke("mux", "crew_spawn", spawn_args))["id"]
         try:
             if capabilities("mux")["banner"]:
                 wait_for_settlement(identifier)
-                profile_verified = verify_profile(identifier, state["profile"])
+                profile_verified = verify_profile(identifier, role_profile)
             else:
                 profile_verified = "unverifiable"
                 print("crew: warning: cannot verify profile; adapter reports banner=false", file=sys.stderr)
@@ -235,9 +241,9 @@ def spawn(args):
             except CrewError: pass
             raise
         reused = False; event("pi_spawn", state, role=name)
-    state["roles"][name] = {"id": identifier, "session_id": session_id, "fallback_used": False}
+    state["roles"][name] = {"id": identifier, "session_id": session_id, "tier": role_tier, "profile": role_profile, "fallback_used": False}
     save(state)
-    output({"id": identifier, "reused": reused, "profile": state["profile"], "profile_verified": profile_verified})
+    output({"id": identifier, "reused": reused, "profile": role_profile, "profile_verified": profile_verified})
 def send(args):
     state = load(); require_running(state); item = role(state, args.role); invoke("mux", "crew_send", [item["id"]], sys.stdin.read()); output({"sent": True})
 def wait(args):
@@ -274,10 +280,10 @@ def fallback(args):
     state = load(); require_running(state); item = role(state, args.role)
     if item["fallback_used"]:
         state["state"] = "escalated"; save(state); event("pi_escalated", state, reason="fallback_exhausted", role=args.role); output({"state": "escalated", "reason": "fallback_exhausted"}); raise CrewError("fallback exhausted")
-    item["fallback_used"] = True; invoke("mux", "crew_close", [item["id"]]); fallback_profile = state["profile"]["fallback"]
+    item["fallback_used"] = True; invoke("mux", "crew_close", [item["id"]]); fallback_profile = item.get("profile", state["profile"])["fallback"]
     session_id = str(uuid.uuid4())
     argv = json.loads(invoke("worker", "worker_argv", [fallback_profile["provider"], fallback_profile["model"], fallback_profile["thinking"], session_id, ""]))
-    identifier = json.loads(invoke("mux", "crew_spawn", [f"crew-{args.role}-{state['tier']}", str(pathlib.Path.cwd()), "--", *argv]))["id"]
+    identifier = json.loads(invoke("mux", "crew_spawn", [f"crew-{args.role}-{item.get('tier', state['tier'])}", str(pathlib.Path.cwd()), "--", *argv]))["id"]
     try:
         wait_for_settlement(identifier); profile_verified = verify_profile(identifier, fallback_profile)
     except CrewError:
@@ -317,7 +323,7 @@ def main():
         del raw_args[index:index + 2]
     parser = argparse.ArgumentParser(prog="crew"); sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("doctor"); p = sub.add_parser("begin"); p.add_argument("--tier", required=True); p.add_argument("--domain"); p.add_argument("--goal-file")
-    p = sub.add_parser("spawn"); p.add_argument("--role", choices=ROLES, required=True); p.add_argument("--stack-under")
+    p = sub.add_parser("spawn"); p.add_argument("--role", choices=ROLES, required=True); p.add_argument("--stack-under"); p.add_argument("--tier")
     p = sub.add_parser("send"); p.add_argument("--role", choices=ROLES, required=True)
     p = sub.add_parser("wait"); p.add_argument("--role", choices=ROLES, required=True); p.add_argument("--timeout", type=float, default=600); p.add_argument("--interval", type=float, default=5)
     p = sub.add_parser("read"); p.add_argument("--role", choices=ROLES, required=True); p.add_argument("--recent", action="store_true"); p.add_argument("--visible", action="store_true"); p.add_argument("--lines", type=int)

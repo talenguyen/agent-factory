@@ -50,7 +50,7 @@ bin/crew begin --tier "$TIER" --domain "$DOMAIN" --goal-file acceptance.md
 # export FACTORY_CREW_DELEGATION_ID from begin's delegation_id
 bin/crew spawn --role worker
 bin/crew spawn --role reviewer --stack-under "$WORKER_ID" # M/L only
-bin/crew spawn --role tester --stack-under "$BOTTOM_ID"   # only when requested
+bin/crew spawn --role tester --stack-under "$BOTTOM_ID" --tier S # only when requested; mixed-tier example
 ```
 
 ## Drive turns through crew
