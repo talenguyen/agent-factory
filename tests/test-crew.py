@@ -7,9 +7,30 @@ import subprocess
 import sys
 import tempfile
 import uuid
+from contextlib import contextmanager
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 CREW = ROOT / "bin" / "crew"
+PROFILE_FILES = (ROOT / "config/profiles.local.json", ROOT / "config/profiles.json")
+
+
+@contextmanager
+def isolated_profiles():
+    """Keep profile-sensitive tests from touching the user's profile files."""
+    originals = {
+        path: path.read_bytes() if path.exists() else None
+        for path in PROFILE_FILES
+    }
+    try:
+        for path in PROFILE_FILES:
+            path.unlink(missing_ok=True)
+        yield
+    finally:
+        for path, contents in originals.items():
+            if contents is None:
+                path.unlink(missing_ok=True)
+            else:
+                path.write_bytes(contents)
 
 
 def run(args, env, stdin=None, cwd=None):
@@ -97,43 +118,44 @@ def test_spawn_forwards_stack_under_to_mux(tmp):
 
 
 def test_spawn_per_role_tier_uses_role_profiles_and_records_tiers(tmp):
-    f = tmp / "fixture.json"; fixture(f)
-    env = environment(tmp, f); begin(tmp, env, "L")
-    reviewer = run(["spawn", "--role", "reviewer", "--tier", "M"], env)
-    worker = run(["spawn", "--role", "worker"], env)
-    mock = json.loads(pathlib.Path(env["FACTORY_MOCK_STATE"]).read_text())
-    reviewer_reply, worker_reply = json.loads(reviewer.stdout), json.loads(worker.stdout)
-    reviewer_argv, worker_argv = mock["spawn_argv"]
-    roles = state(env)["roles"]
-    assert reviewer.returncode == 0 and worker.returncode == 0
-    assert reviewer_argv[1:5] == ["mock-worker", "openai-codex", "gpt-5.6-terra", "medium"]
-    assert worker_argv[1:5] == ["mock-worker", "openai-codex", "gpt-5.6-sol", "high"]
-    assert mock["verify_profiles"][0][1:] == ["openai-codex", "gpt-5.6-terra", "medium"]
-    assert mock["verify_profiles"][1][1:] == ["openai-codex", "gpt-5.6-sol", "high"]
-    assert reviewer_reply["profile"]["model"] == "gpt-5.6-terra" and reviewer_reply["profile"]["thinking"] == "medium"
-    assert worker_reply["profile"]["model"] == "gpt-5.6-sol" and worker_reply["profile"]["thinking"] == "high"
-    assert roles["reviewer"]["tier"] == "M" and roles["worker"]["tier"] == "L"
+    with isolated_profiles():
+        f = tmp / "fixture.json"; fixture(f)
+        env = environment(tmp, f); begin(tmp, env, "L")
+        reviewer = run(["spawn", "--role", "reviewer", "--tier", "M"], env)
+        worker = run(["spawn", "--role", "worker"], env)
+        mock = json.loads(pathlib.Path(env["FACTORY_MOCK_STATE"]).read_text())
+        reviewer_reply, worker_reply = json.loads(reviewer.stdout), json.loads(worker.stdout)
+        reviewer_argv, worker_argv = mock["spawn_argv"]
+        roles = state(env)["roles"]
+        assert reviewer.returncode == 0 and worker.returncode == 0
+        assert reviewer_argv[1:5] == ["mock-worker", "openai-codex", "gpt-5.6-terra", "medium"]
+        assert worker_argv[1:5] == ["mock-worker", "openai-codex", "gpt-5.6-sol", "high"]
+        assert mock["verify_profiles"][0][1:] == ["openai-codex", "gpt-5.6-terra", "medium"]
+        assert mock["verify_profiles"][1][1:] == ["openai-codex", "gpt-5.6-sol", "high"]
+        assert reviewer_reply["profile"]["model"] == "gpt-5.6-terra" and reviewer_reply["profile"]["thinking"] == "medium"
+        assert worker_reply["profile"]["model"] == "gpt-5.6-sol" and worker_reply["profile"]["thinking"] == "high"
+        assert roles["reviewer"]["tier"] == "M" and roles["worker"]["tier"] == "L"
 
 
 def test_spawn_same_role_tier_reuses_but_different_tier_does_not(tmp):
-    f = tmp / "fixture.json"; fixture(f)
-    env = environment(tmp, f); begin(tmp, env, "L")
-    first = run(["spawn", "--role", "reviewer", "--tier", "M"], env)
-    second = run(["spawn", "--role", "reviewer", "--tier", "M"], env)
-    different = run(["spawn", "--role", "reviewer", "--tier", "S"], env)
-    first_reply, second_reply, different_reply = (json.loads(result.stdout) for result in (first, second, different))
-    assert first.returncode == 0 and second.returncode == 0 and different.returncode == 0
-    assert first_reply["reused"] is False and second_reply["reused"] is True and second_reply["id"] == first_reply["id"]
-    assert different_reply["reused"] is False and different_reply["id"] != first_reply["id"]
-    assert state(env)["roles"]["reviewer"]["tier"] == "S"
+    with isolated_profiles():
+        f = tmp / "fixture.json"; fixture(f)
+        env = environment(tmp, f); begin(tmp, env, "L")
+        first = run(["spawn", "--role", "reviewer", "--tier", "M"], env)
+        second = run(["spawn", "--role", "reviewer", "--tier", "M"], env)
+        different = run(["spawn", "--role", "reviewer", "--tier", "S"], env)
+        first_reply, second_reply, different_reply = (json.loads(result.stdout) for result in (first, second, different))
+        assert first.returncode == 0 and second.returncode == 0 and different.returncode == 0
+        assert first_reply["reused"] is False and second_reply["reused"] is True and second_reply["id"] == first_reply["id"]
+        assert different_reply["reused"] is False and different_reply["id"] != first_reply["id"]
+        assert state(env)["roles"]["reviewer"]["tier"] == "S"
 
 
 def test_fallback_uses_the_role_override_profile(tmp):
-    f = tmp / "fixture.json"; fixture(f)
-    project = ROOT / "config/profiles.json"
-    previous = project.read_bytes() if project.exists() else None
-    project.write_text(profile_table_with_model("project-model", {"S": "fallback-S", "M": "fallback-M", "L": "fallback-L"}))
-    try:
+    with isolated_profiles():
+        f = tmp / "fixture.json"; fixture(f)
+        project = ROOT / "config/profiles.json"
+        project.write_text(profile_table_with_model("project-model", {"S": "fallback-S", "M": "fallback-M", "L": "fallback-L"}))
         env = environment(tmp, f); begin(tmp, env, "L")
         spawned = run(["spawn", "--role", "reviewer", "--tier", "M"], env)
         fallback = run(["fallback", "--role", "reviewer"], env)
@@ -141,17 +163,13 @@ def test_fallback_uses_the_role_override_profile(tmp):
         assert spawned.returncode == 0 and fallback.returncode == 0
         assert mock["spawn_argv"][-1][1:5] == ["mock-worker", "opencode-go", "fallback-M", "high"]
         assert mock["verify_profiles"][-1][1:] == ["opencode-go", "fallback-M", "high"]
-    finally:
-        if previous is None: project.unlink(missing_ok=True)
-        else: project.write_bytes(previous)
 
 
 def test_no_tier_spawn_uses_begin_profile_snapshot(tmp):
-    f = tmp / "fixture.json"; fixture(f)
-    project = ROOT / "config/profiles.json"
-    previous = project.read_bytes() if project.exists() else None
-    project.write_text(profile_table_with_model("original-M"))
-    try:
+    with isolated_profiles():
+        f = tmp / "fixture.json"; fixture(f)
+        project = ROOT / "config/profiles.json"
+        project.write_text(profile_table_with_model("original-M"))
         env = environment(tmp, f); begin(tmp, env, "M")
         project.write_text(profile_table_with_model("mutated-M"))
         result = run(["spawn", "--role", "worker"], env)
@@ -161,9 +179,6 @@ def test_no_tier_spawn_uses_begin_profile_snapshot(tmp):
         assert mock["spawn_argv"][-1][1:5] == ["mock-worker", "openai-codex", "original-M", "medium"]
         assert mock["verify_profiles"][-1][1:] == ["openai-codex", "original-M", "medium"]
         assert reply["profile"]["model"] == "original-M"
-    finally:
-        if previous is None: project.unlink(missing_ok=True)
-        else: project.write_bytes(previous)
 
 
 def test_spawn_rejects_an_invalid_tier(tmp):
@@ -226,14 +241,12 @@ def test_interrupted_round_state_recovery(tmp):
 
 
 def test_profile_resolution_skips_absent_and_stops_malformed(tmp):
-    f = tmp / "fixture.json"; fixture(f)
-    local = ROOT / "config" / "profiles.local.json"
-    local.parent.mkdir(exist_ok=True); local.write_text("not json")
-    try:
+    with isolated_profiles():
+        f = tmp / "fixture.json"; fixture(f)
+        local = ROOT / "config" / "profiles.local.json"
+        local.parent.mkdir(exist_ok=True); local.write_text("not json")
         result = run(["begin", "--tier", "M", "--domain", "software"], environment(tmp, f))
         assert result.returncode != 0 and "malformed profile table" in result.stderr
-    finally:
-        local.unlink()
 
 
 def profile_table_with_model(model, fallback_models=None):
@@ -245,32 +258,43 @@ def profile_table_with_model(model, fallback_models=None):
 
 
 def test_profile_local_source_wins_over_project_source(tmp):
-    f = tmp / "fixture.json"; fixture(f)
-    local, project = ROOT / "config/profiles.local.json", ROOT / "config/profiles.json"
-    local.parent.mkdir(exist_ok=True); local.write_text(profile_table_with_model("local-model")); project.write_text(profile_table_with_model("project-model"))
-    try:
+    with isolated_profiles():
+        f = tmp / "fixture.json"; fixture(f)
+        local, project = ROOT / "config/profiles.local.json", ROOT / "config/profiles.json"
+        local.parent.mkdir(exist_ok=True); local.write_text(profile_table_with_model("local-model")); project.write_text(profile_table_with_model("project-model"))
         env = environment(tmp, f); begin(tmp, env)
         assert state(env)["profile"]["model"] == "local-model"
-    finally:
-        local.unlink(missing_ok=True); project.unlink(missing_ok=True)
 
 
 def test_profile_project_source_wins_when_local_is_absent(tmp):
-    f = tmp / "fixture.json"; fixture(f)
-    project = ROOT / "config/profiles.json"
-    project.parent.mkdir(exist_ok=True); project.write_text(profile_table_with_model("project-model"))
-    try:
+    with isolated_profiles():
+        f = tmp / "fixture.json"; fixture(f)
+        project = ROOT / "config/profiles.json"
+        project.parent.mkdir(exist_ok=True); project.write_text(profile_table_with_model("project-model"))
         env = environment(tmp, f); begin(tmp, env)
         assert state(env)["profile"]["model"] == "project-model"
-    finally:
-        project.unlink(missing_ok=True)
 
 
 def test_profile_bundled_source_wins_when_local_sources_are_absent(tmp):
-    f = tmp / "fixture.json"; fixture(f)
-    env = environment(tmp, f); begin(tmp, env)
-    expected = json.loads((ROOT / ".claude/skills/delegate-to-pi/references/pi-profiles.json").read_text())["profiles"]["M"]["model"]
-    assert state(env)["profile"]["model"] == expected
+    with isolated_profiles():
+        f = tmp / "fixture.json"; fixture(f)
+        env = environment(tmp, f); begin(tmp, env)
+        expected = json.loads((ROOT / ".claude/skills/delegate-to-pi/references/pi-profiles.json").read_text())["profiles"]["M"]["model"]
+        assert state(env)["profile"]["model"] == expected
+
+
+def test_isolated_profiles_restores_distinctive_local_sentinel_after_failure(tmp):
+    local = ROOT / "config/profiles.local.json"
+    sentinel = b'{"sentinel":"restore-me-byte-for-byte",\n  "marker": "distinctive"}\n'
+    with isolated_profiles():
+        local.write_bytes(sentinel)
+        try:
+            with isolated_profiles():
+                local.write_bytes(b"mutated by scenario")
+                raise AssertionError("exercise restoration on assertion failure")
+        except AssertionError:
+            pass
+        assert local.read_bytes() == sentinel
 
 
 def pack_root(tmp, command="printf verified"):
@@ -463,7 +487,7 @@ def test_state_ledger_and_telemetry_are_shared_and_isolated(tmp):
 
 
 def main():
-    checks = (test_selection_fails_loudly, test_malformed_capabilities_fail_loudly, test_default_adapters_and_missing_fixture_name_the_adapter_defect, test_named_shell_adapter_executes_its_shebang, test_delegation_id_can_follow_the_subcommand_and_begin_explains_it, test_spawn_forwards_stack_under_to_mux, test_spawn_per_role_tier_uses_role_profiles_and_records_tiers, test_spawn_same_role_tier_reuses_but_different_tier_does_not, test_fallback_uses_the_role_override_profile, test_no_tier_spawn_uses_begin_profile_snapshot, test_spawn_rejects_an_invalid_tier, test_reuse_requires_role_tier_cwd_and_name, test_banner_false_discovered_reuse_is_unverifiable, test_reuse_name_boundary_accepts_variant_not_tier_prefix, test_capability_degradation_uses_sentinel_and_warns_for_no_banner, test_interrupted_round_state_recovery, test_profile_resolution_skips_absent_and_stops_malformed, test_profile_local_source_wins_over_project_source, test_profile_project_source_wins_when_local_is_absent, test_profile_bundled_source_wins_when_local_sources_are_absent, test_domain_resolution_prefers_explicit_over_workspace_and_default, test_begin_rejects_each_missing_required_pack_section, test_verify_cli_rejects_comment_and_blank_only_pack_commands, test_verify_cli_executes_multiline_and_comment_prefixed_pack_commands, test_begin_rejects_a_missing_domain_pack, test_saved_bannerless_reuse_warns_that_profile_is_unverifiable, test_reuse_revalidates_saved_agent_status, test_role_sessions_are_distinct_and_scout_is_fresh, test_wait_routes_rate_limit_output_to_failed,
+    checks = (test_selection_fails_loudly, test_malformed_capabilities_fail_loudly, test_default_adapters_and_missing_fixture_name_the_adapter_defect, test_named_shell_adapter_executes_its_shebang, test_delegation_id_can_follow_the_subcommand_and_begin_explains_it, test_spawn_forwards_stack_under_to_mux, test_spawn_per_role_tier_uses_role_profiles_and_records_tiers, test_spawn_same_role_tier_reuses_but_different_tier_does_not, test_fallback_uses_the_role_override_profile, test_no_tier_spawn_uses_begin_profile_snapshot, test_spawn_rejects_an_invalid_tier, test_reuse_requires_role_tier_cwd_and_name, test_banner_false_discovered_reuse_is_unverifiable, test_reuse_name_boundary_accepts_variant_not_tier_prefix, test_capability_degradation_uses_sentinel_and_warns_for_no_banner, test_interrupted_round_state_recovery, test_profile_resolution_skips_absent_and_stops_malformed, test_profile_local_source_wins_over_project_source, test_profile_project_source_wins_when_local_is_absent, test_profile_bundled_source_wins_when_local_sources_are_absent, test_isolated_profiles_restores_distinctive_local_sentinel_after_failure, test_domain_resolution_prefers_explicit_over_workspace_and_default, test_begin_rejects_each_missing_required_pack_section, test_verify_cli_rejects_comment_and_blank_only_pack_commands, test_verify_cli_executes_multiline_and_comment_prefixed_pack_commands, test_begin_rejects_a_missing_domain_pack, test_saved_bannerless_reuse_warns_that_profile_is_unverifiable, test_reuse_revalidates_saved_agent_status, test_role_sessions_are_distinct_and_scout_is_fresh, test_wait_routes_rate_limit_output_to_failed,
               test_fallback_is_once_per_role, test_round_cap_escalates_and_blocks_send,
               test_turn_cap_and_no_progress_escalate, test_wait_debounces_stale_and_reports_escape_hatch,
               test_factory_anchor_and_concurrent_delegations, test_telemetry_uses_exactly_the_canonical_eight_events, test_state_ledger_and_telemetry_are_shared_and_isolated)
@@ -475,7 +499,8 @@ def main():
         for check in checks:
             case_dir = tmp / check.__name__
             case_dir.mkdir()
-            check(case_dir)
+            with isolated_profiles():
+                check(case_dir)
     print("test-crew: PASS")
 
 
