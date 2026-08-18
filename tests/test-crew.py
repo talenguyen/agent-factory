@@ -285,9 +285,11 @@ def test_profile_bundled_source_wins_when_local_sources_are_absent(tmp):
 
 def test_isolated_profiles_restores_distinctive_local_sentinel_after_failure(tmp):
     local = ROOT / "config/profiles.local.json"
-    sentinel = b'{"sentinel":"restore-me-byte-for-byte",\n  "marker": "distinctive"}\n'
+    sentinel = profile_table_with_model("sentinel-local-model").encode()
     with isolated_profiles():
         local.write_bytes(sentinel)
+        test_profile_local_source_wins_over_project_source(tmp)
+        assert local.read_bytes() == sentinel
         try:
             with isolated_profiles():
                 local.write_bytes(b"mutated by scenario")
