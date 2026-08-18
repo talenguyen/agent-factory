@@ -12,6 +12,11 @@ from contextlib import contextmanager
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 CREW = ROOT / "bin" / "crew"
 PROFILE_FILES = (ROOT / "config/profiles.local.json", ROOT / "config/profiles.json")
+BUNDLED_PROFILE_FILE = ROOT / ".claude/skills/delegate-to-pi/references/pi-profiles.json"
+
+
+def bundled_profiles():
+    return json.loads(BUNDLED_PROFILE_FILE.read_text())["profiles"]
 
 
 @contextmanager
@@ -127,13 +132,15 @@ def test_spawn_per_role_tier_uses_role_profiles_and_records_tiers(tmp):
         reviewer_reply, worker_reply = json.loads(reviewer.stdout), json.loads(worker.stdout)
         reviewer_argv, worker_argv = mock["spawn_argv"]
         roles = state(env)["roles"]
+        profiles = bundled_profiles()
+        m_profile, l_profile = profiles["M"], profiles["L"]
         assert reviewer.returncode == 0 and worker.returncode == 0
-        assert reviewer_argv[1:5] == ["mock-worker", "openai-codex", "gpt-5.6-terra", "medium"]
-        assert worker_argv[1:5] == ["mock-worker", "openai-codex", "gpt-5.6-sol", "high"]
-        assert mock["verify_profiles"][0][1:] == ["openai-codex", "gpt-5.6-terra", "medium"]
-        assert mock["verify_profiles"][1][1:] == ["openai-codex", "gpt-5.6-sol", "high"]
-        assert reviewer_reply["profile"]["model"] == "gpt-5.6-terra" and reviewer_reply["profile"]["thinking"] == "medium"
-        assert worker_reply["profile"]["model"] == "gpt-5.6-sol" and worker_reply["profile"]["thinking"] == "high"
+        assert reviewer_argv[1:5] == ["mock-worker", m_profile["provider"], m_profile["model"], m_profile["thinking"]]
+        assert worker_argv[1:5] == ["mock-worker", l_profile["provider"], l_profile["model"], l_profile["thinking"]]
+        assert mock["verify_profiles"][0][1:] == [m_profile["provider"], m_profile["model"], m_profile["thinking"]]
+        assert mock["verify_profiles"][1][1:] == [l_profile["provider"], l_profile["model"], l_profile["thinking"]]
+        assert reviewer_reply["profile"]["model"] == m_profile["model"] and reviewer_reply["profile"]["thinking"] == m_profile["thinking"]
+        assert worker_reply["profile"]["model"] == l_profile["model"] and worker_reply["profile"]["thinking"] == l_profile["thinking"]
         assert roles["reviewer"]["tier"] == "M" and roles["worker"]["tier"] == "L"
 
 
@@ -160,9 +167,10 @@ def test_fallback_uses_the_role_override_profile(tmp):
         spawned = run(["spawn", "--role", "reviewer", "--tier", "M"], env)
         fallback = run(["fallback", "--role", "reviewer"], env)
         mock = json.loads(pathlib.Path(env["FACTORY_MOCK_STATE"]).read_text())
+        expected_fallback = bundled_profiles()["M"]["fallback"]
         assert spawned.returncode == 0 and fallback.returncode == 0
-        assert mock["spawn_argv"][-1][1:5] == ["mock-worker", "opencode-go", "fallback-M", "high"]
-        assert mock["verify_profiles"][-1][1:] == ["opencode-go", "fallback-M", "high"]
+        assert mock["spawn_argv"][-1][1:5] == ["mock-worker", expected_fallback["provider"], "fallback-M", expected_fallback["thinking"]]
+        assert mock["verify_profiles"][-1][1:] == [expected_fallback["provider"], "fallback-M", expected_fallback["thinking"]]
 
 
 def test_no_tier_spawn_uses_begin_profile_snapshot(tmp):
@@ -175,9 +183,10 @@ def test_no_tier_spawn_uses_begin_profile_snapshot(tmp):
         result = run(["spawn", "--role", "worker"], env)
         mock = json.loads(pathlib.Path(env["FACTORY_MOCK_STATE"]).read_text())
         reply = json.loads(result.stdout)
+        expected_profile = bundled_profiles()["M"]
         assert result.returncode == 0
-        assert mock["spawn_argv"][-1][1:5] == ["mock-worker", "openai-codex", "original-M", "medium"]
-        assert mock["verify_profiles"][-1][1:] == ["openai-codex", "original-M", "medium"]
+        assert mock["spawn_argv"][-1][1:5] == ["mock-worker", expected_profile["provider"], "original-M", expected_profile["thinking"]]
+        assert mock["verify_profiles"][-1][1:] == [expected_profile["provider"], "original-M", expected_profile["thinking"]]
         assert reply["profile"]["model"] == "original-M"
 
 
@@ -200,7 +209,7 @@ def test_reuse_requires_role_tier_cwd_and_name(tmp):
     env = environment(tmp, f); begin(tmp, env)
     result = run(["spawn", "--role", "worker"], env)
     reply = json.loads(result.stdout)
-    assert result.returncode == 0 and reply["id"] == "right" and reply["reused"] and reply["profile"]["model"] == "gpt-5.6-terra"
+    assert result.returncode == 0 and reply["id"] == "right" and reply["reused"] and reply["profile"]["model"] == bundled_profiles()["M"]["model"]
 
 
 def test_banner_false_discovered_reuse_is_unverifiable(tmp):
@@ -279,7 +288,7 @@ def test_profile_bundled_source_wins_when_local_sources_are_absent(tmp):
     with isolated_profiles():
         f = tmp / "fixture.json"; fixture(f)
         env = environment(tmp, f); begin(tmp, env)
-        expected = json.loads((ROOT / ".claude/skills/delegate-to-pi/references/pi-profiles.json").read_text())["profiles"]["M"]["model"]
+        expected = bundled_profiles()["M"]["model"]
         assert state(env)["profile"]["model"] == expected
 
 
@@ -406,7 +415,8 @@ def test_fallback_is_once_per_role(tmp):
     other = run(["fallback", "--role", "reviewer"], env)
     second = run(["fallback", "--role", "worker"], env)
     mock = json.loads(pathlib.Path(env["FACTORY_MOCK_STATE"]).read_text())
-    assert first.returncode == 0 and other.returncode == 0 and second.returncode != 0 and state(env)["state"] == "escalated" and any("deepseek-v4-flash" in args for args in mock["spawn_argv"]) and len(mock["verify_profiles"]) == 4
+    fallback_model = bundled_profiles()["M"]["fallback"]["model"]
+    assert first.returncode == 0 and other.returncode == 0 and second.returncode != 0 and state(env)["state"] == "escalated" and any(fallback_model in args for args in mock["spawn_argv"]) and len(mock["verify_profiles"]) == 4
 
 
 def test_round_cap_escalates_and_blocks_send(tmp):
