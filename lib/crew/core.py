@@ -203,6 +203,13 @@ def spawn(args):
     role_profile = state["profile"] if args.tier is None else profile()["profiles"][role_tier]
     prefix = f"crew-{name}-{role_tier}"; cwd = str(pathlib.Path.cwd())
     session_id = str(uuid.uuid4()) if name == "scout" else f"{state['delegation_id']}-{name}"
+
+    def _record_profile_reuse():
+        profile_verified = "unverifiable" if not capabilities("mux")["banner"] else "verified"
+        if profile_verified == "unverifiable": print("crew: warning: cannot verify profile; adapter reports banner=false", file=sys.stderr)
+        event("pi_reuse", state, role=name)
+        return profile_verified
+
     agents = json.loads(invoke("mux", "crew_list"))
     if name in state["roles"] and name != "scout":
         saved = state["roles"][name]
@@ -211,18 +218,14 @@ def spawn(args):
             if live:
                 saved.update({"tier": role_tier, "profile": role_profile})
                 save(state)
-                profile_verified = "unverifiable" if not capabilities("mux")["banner"] else "verified"
-                if profile_verified == "unverifiable": print("crew: warning: cannot verify profile; adapter reports banner=false", file=sys.stderr)
-                event("pi_reuse", state, role=name)
+                profile_verified = _record_profile_reuse()
                 output({"id": saved["id"], "reused": True, "profile": role_profile, "profile_verified": profile_verified})
                 return
         del state["roles"][name]
     found = next((a for a in agents if isinstance(a.get("name"), str) and (a["name"] == prefix or a["name"].startswith(prefix + "-")) and a.get("cwd") == cwd and a.get("status") == "settled"), None)
     if found:
         identifier, reused = found["id"], True
-        profile_verified = "unverifiable" if not capabilities("mux")["banner"] else "verified"
-        if profile_verified == "unverifiable": print("crew: warning: cannot verify profile; adapter reports banner=false", file=sys.stderr)
-        event("pi_reuse", state, role=name)
+        profile_verified = _record_profile_reuse()
     else:
         argv = json.loads(invoke("worker", "worker_argv", [role_profile["provider"], role_profile["model"], role_profile["thinking"], session_id, ""]))
         spawn_args = [prefix, cwd, *( ["--stack-under", args.stack_under] if args.stack_under else [] ), "--", *argv]

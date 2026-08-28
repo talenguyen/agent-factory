@@ -49,10 +49,10 @@ cp "$project_root/lib/crew/__init__.py" "$project_root/lib/crew/core.py" "$resid
 python3 - "$residual_lib/crew/core.py" <<'PY'
 import pathlib, sys
 path = pathlib.Path(sys.argv[1])
-old = '            if profile_verified == "unverifiable": print("crew: warning: cannot verify profile; adapter reports banner=false", file=sys.stderr)\n            event("pi_reuse", state, role=name)'
+old = '        if profile_verified == "unverifiable": print("crew: warning: cannot verify profile; adapter reports banner=false", file=sys.stderr)\n        event("pi_reuse", state, role=name)'
 text = path.read_text()
 assert text.count(old) == 1
-path.write_text(text.replace(old, '            event("pi_reuse", state, role=name)'))
+path.write_text(text.replace(old, '        event("pi_reuse", state, role=name)'))
 PY
 set +e
 CREW_LIB_ROOT="$residual_lib" python3 "$project_root/tests/test-crew.py" test_saved_bannerless_reuse_warns_that_profile_is_unverifiable >/dev/null 2>&1
